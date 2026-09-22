@@ -456,7 +456,7 @@ export default function App() {
                   Esta plataforma web interactiva le ayudará a evaluar de forma sencilla los factores físicos de su marcha y las condiciones de su hogar para prevenir tropiezos.
                 </p>
                 <p style={{ ...styles.text, fontSize: '15px', color: '#4B5563', borderLeft: '4px solid #0D9488', paddingLeft: '12px' }}>
-                  <strong>Aviso Ético y de Privacidad:</strong> Sus respuestas se almacenan de manera local y confidencial en Supabase PostgreSQL. Este software es un asistente educativo y de orientación que <strong>no emite diagnósticos médicos ni reemplaza la atención profesional.</strong>
+                  <strong>Aviso Ético y de Privacidad:</strong> Este software es un asistente educativo y de orientación que <strong>no emite diagnósticos médicos ni reemplaza la atención profesional.</strong>
                 </p>
               </div>
               
@@ -467,12 +467,6 @@ export default function App() {
                 Iniciar Evaluación
               </button>
 
-              <button
-                style={{ ...styles.button, ...styles.secondaryBtn, marginTop: '12px', backgroundColor: '#4F46E5' }}
-                onClick={triggerDemoMode}
-              >
-                Probar Telemetría IoT (Modo Demo)
-              </button>
             </section>
           )}
 
