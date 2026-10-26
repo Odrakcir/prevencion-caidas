@@ -1,0 +1,200 @@
+// Ítems preventivos basados en la Escala de Caídas de Morse
+export const QUESTIONS = [
+  {
+    id: "caidas",
+    text: "¿Ha tenido algún tropiezo o caída en los últimos meses?",
+    points: 25,
+  },
+  {
+    id: "diagnostico",
+    text: "¿Padece de más de una enfermedad o diagnóstico médico?",
+    points: 15,
+  },
+  {
+    id: "ayuda",
+    text: "Al caminar en casa, ¿siente la necesidad de apoyarse en muebles, muros o usar bastón?",
+    points: 15,
+  },
+  {
+    id: "marcha",
+    text: "Al ponerse de pie, ¿siente que su marcha es lenta, inestable o le cuesta dar el primer paso?",
+    points: 10,
+  },
+  {
+    id: "mental",
+    text: "¿Siente que a veces olvida sus propias limitaciones físicas al intentar caminar o levantarse apurado?",
+    points: 15,
+  },
+];
+
+// Módulo de Peligros Ambientales
+export const ENVIRONMENTAL_HAZARDS = [
+  { id: "rugs", label: "Alfombras sueltas en pasillos o dormitorio" },
+  { id: "lighting", label: "Mala iluminación nocturna (trayecto al baño)" },
+  { id: "bars", label: "Falta de barras de sujeción en ducha o WC" },
+  { id: "obstacles", label: "Obstáculos o cables sueltos en el suelo" },
+];
+
+// Datos detallados del Historial Diario (Por horas)
+export const HOURLY_DATA = [
+  {
+    time: "08:00",
+    stability: 96,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    tilt: 3.2,
+    accelG: 0.98,
+    fsr: 48,
+    device: "ESP32_LUMBAR_01",
+    detail:
+      "Caminata matutina fluida. Excelente estabilidad y soporte plantar.",
+  },
+  {
+    time: "10:00",
+    stability: 92,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    tilt: 4.1,
+    accelG: 0.96,
+    fsr: 52,
+    device: "ESP32_LUMBAR_01",
+    detail: "Desplazamiento normal hacia la cocina. Sin asimetrías de paso.",
+  },
+  {
+    time: "11:15",
+    stability: 45,
+    label: "Alerta Leve",
+    statusColor: "#F59E0B",
+    event: "Asimetría rápida (Micro-tropiezo)",
+    tilt: 16.4,
+    accelG: 0.58,
+    fsr: 18,
+    device: "ESP32_LUMBAR_01",
+    detail:
+      "Pérdida temporal de apoyo en pie derecho al cruzar el pasillo. Postura recuperada inmediatamente.",
+  },
+  {
+    time: "13:00",
+    stability: 89,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    tilt: 3.8,
+    accelG: 0.97,
+    fsr: 45,
+    device: "ESP32_LUMBAR_01",
+    detail: "Reposo / Almuerzo. Inclinación del torso en rangos óptimos.",
+  },
+  {
+    time: "15:00",
+    stability: 91,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    tilt: 4.5,
+    accelG: 0.99,
+    fsr: 50,
+    device: "ESP32_LUMBAR_01",
+    detail: "Caminata corta en el patio. Cadencia firme y segura.",
+  },
+  {
+    time: "17:30",
+    stability: 35,
+    label: "Alerta Crítica",
+    statusColor: "#EF4444",
+    event: "Inclinación crítica (Pérdida de balance)",
+    tilt: 24.8,
+    accelG: 0.35,
+    fsr: 10,
+    device: "ESP32_LUMBAR_01",
+    detail:
+      "Inclinación brusca del torso al levantarse del sillón. Evento registrado y notificado.",
+  },
+  {
+    time: "19:00",
+    stability: 94,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    tilt: 3.6,
+    accelG: 0.98,
+    fsr: 47,
+    device: "ESP32_LUMBAR_01",
+    detail: "Marcha pausada en zona de estar. Soporte completo.",
+  },
+  {
+    time: "21:00",
+    stability: 97,
+    label: "En Vivo",
+    statusColor: "#0D9488",
+    event: null,
+    tilt: 3.1,
+    accelG: 0.98,
+    fsr: 49,
+    device: "ESP32_LUMBAR_01",
+    detail:
+      "Sincronización activa en tiempo real. Usuario en posición segura de descanso.",
+  },
+];
+
+export const WEEKLY_DATA = [
+  {
+    time: "Lun",
+    stability: 94,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 94%. Sin alertas registradas.",
+  },
+  {
+    time: "Mar",
+    stability: 91,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 91%. Marcha segura en el hogar.",
+  },
+  {
+    time: "Mié",
+    stability: 52,
+    label: "Alerta Leve",
+    statusColor: "#F59E0B",
+    event: "Micro-tropiezo en cocina",
+    detail:
+      "Promedio diario: 52%. Se detectó un tropiezo leve a las 11:40 hrs.",
+  },
+  {
+    time: "Jue",
+    stability: 95,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 95%. Entorno despejado y seguro.",
+  },
+  {
+    time: "Vie",
+    stability: 88,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 88%. Desplazamiento adecuado.",
+  },
+  {
+    time: "Sáb",
+    stability: 93,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 93%. Acompañamiento familiar.",
+  },
+  {
+    time: "Dom",
+    stability: 96,
+    label: "Estable",
+    statusColor: "#10B981",
+    event: null,
+    detail: "Promedio de estabilidad: 96%. Excelente estabilidad de marcha.",
+  },
+];
