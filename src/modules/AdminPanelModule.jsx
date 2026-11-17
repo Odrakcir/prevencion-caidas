@@ -4,7 +4,6 @@ import { useIsDesktop } from "../hooks/useDesktop";
 import Button from "../components/common/Button";
 import Header from "../components/common/Header";
 import StabilityChart from "../components/dashboard/StabilityChart";
-import RiskModal from "./RiskModal"; // <-- NUEVO IMPORT
 import {
   startSession,
   endSession,
@@ -12,34 +11,28 @@ import {
   fetchAllPatients,
   createPatient,
   sendCommandToESP32,
-  saveEvaluation, // <-- NUEVO
-  fetchEvaluations, // <-- NUEVO
+  fetchEvaluations,
 } from "../services/sessionService";
-import { HOURLY_DATA, WEEKLY_DATA } from "../constants/surveyData";
+import { HOURLY_DATA } from "../constants/surveyData";
 
-export default function AdminPanelModule({ onExit }) {
+export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
 
   // --- ESTADOS ---
   const [patients, setPatients] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [evaluations, setEvaluations] = useState([]); // NUEVO: Historial de riesgos
-
+  const [evaluations, setEvaluations] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [investigatorName, setInvestigatorName] = useState("");
-
-  // Estado para el Modal de Riesgo
-  const [selectedPatientForRisk, setSelectedPatientForRisk] = useState(null);
 
   // IP del ESP32 persistente en localStorage
   const [esp32Ip, setEsp32Ip] = useState(
     () => localStorage.getItem("esp32_ip") || "192.168.1.150",
   );
 
-  // Formulario de nuevo paciente
+  // Formulario de nuevo participante
   const [newPatient, setNewPatient] = useState({
     nombres: "",
     apellidos: "",
@@ -65,7 +58,7 @@ export default function AdminPanelModule({ onExit }) {
       const [patientsData, sessionsData, evalData] = await Promise.all([
         fetchAllPatients(),
         fetchActiveSessions(),
-        fetchEvaluations(), // Cargamos las evaluaciones
+        fetchEvaluations(),
       ]);
       setPatients(patientsData);
       setSessions(sessionsData);
@@ -100,25 +93,21 @@ export default function AdminPanelModule({ onExit }) {
         newPatient.apellidos,
         newPatient.rut,
       );
-
       setNewPatient({ nombres: "", apellidos: "", rut: "" });
       setShowAddForm(false);
       await loadData();
     } catch (err) {
-      alert("Error al registrar paciente: " + err.message);
+      alert("Error al registrar participante: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleStart = async () => {
-    if (!selectedPatientId) return alert("Selecciona un paciente.");
+    if (!selectedPatientId) return alert("Selecciona un participante.");
     setLoading(true);
     try {
-      const newSession = await startSession(
-        selectedPatientId,
-        investigatorName,
-      );
+      const newSession = await startSession(selectedPatientId); // <-- Ya no pasamos el nombre
       setActiveSessionId(newSession.id_sesion);
 
       const success = await sendCommandToESP32(
@@ -154,24 +143,13 @@ export default function AdminPanelModule({ onExit }) {
     }
   };
 
-  // NUEVO: Guardar Evaluación de Riesgo
-  const handleSaveRisk = async (idUsuario, answers, score, riskLabel) => {
-    try {
-      await saveEvaluation(idUsuario, answers, score, riskLabel);
-      setSelectedPatientForRisk(null);
-      await loadData();
-    } catch (err) {
-      alert("Error al guardar evaluación: " + err.message);
-    }
-  };
-
-  // NUEVO: Obtener el último riesgo de un paciente para mostrarlo en la tabla
+  // Obtener el último riesgo para mostrarlo en la tabla
   const getLastRisk = (idUsuario) => {
     const patient = patients.find((p) => p.id_usuario === idUsuario);
     return patient?.nivel_riesgo_actual || "Sin evaluar";
   };
 
-  // --- ESTILOS LOCALES (COMPACTOS) ---
+  // --- ESTILOS LOCALES ---
   const adminStyles = {
     sectionTitle: {
       fontSize: "18px",
@@ -230,7 +208,7 @@ export default function AdminPanelModule({ onExit }) {
                 margin: 0,
               }}
             >
-              Panel de Control - Investigador
+              Panel de Control - Admin
             </h2>
             <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
               <div
@@ -283,7 +261,7 @@ export default function AdminPanelModule({ onExit }) {
             </div>
           </div>
 
-          {/* 1. DIRECTORIO DE PACIENTES */}
+          {/* 1. DIRECTORIO DE PARTICIPANTES */}
           <div style={adminStyles.card}>
             <div
               style={{
@@ -301,7 +279,7 @@ export default function AdminPanelModule({ onExit }) {
                   padding: 0,
                 }}
               >
-                Directorio de Pacientes
+                Directorio de Participantes
               </h3>
               <Button
                 variant={showAddForm ? "secondary" : "primary"}
@@ -313,7 +291,7 @@ export default function AdminPanelModule({ onExit }) {
                   fontSize: "13px",
                 }}
               >
-                {showAddForm ? "Cancelar" : "+ Nuevo Paciente"}
+                {showAddForm ? "Cancelar" : "+ Nuevo Participante"}
               </Button>
             </div>
 
@@ -387,7 +365,7 @@ export default function AdminPanelModule({ onExit }) {
                     fontSize: "14px",
                   }}
                 >
-                  Guardar Paciente
+                  Guardar Participante
                 </Button>
               </form>
             )}
@@ -452,7 +430,6 @@ export default function AdminPanelModule({ onExit }) {
                         : riskLabel.includes("Bajo")
                           ? "#047857"
                           : "#6B7280";
-
                     return (
                       <tr
                         key={p.id_usuario}
@@ -472,7 +449,7 @@ export default function AdminPanelModule({ onExit }) {
                         </td>
                         <td style={{ padding: "8px 12px" }}>
                           <button
-                            onClick={() => setSelectedPatientForRisk(p)}
+                            onClick={() => onStartEvaluation(p.id_usuario)}
                             style={{
                               padding: "4px 10px",
                               fontSize: "12px",
@@ -505,7 +482,6 @@ export default function AdminPanelModule({ onExit }) {
             <h3 style={adminStyles.sectionTitle}>
               Control de Sesión de Prueba
             </h3>
-
             {activeSessionId ? (
               <div
                 style={{
@@ -562,30 +538,21 @@ export default function AdminPanelModule({ onExit }) {
                 }}
               >
                 <div>
-                  <label style={adminStyles.label}>Seleccionar Paciente</label>
+                  <label style={adminStyles.label}>
+                    Seleccionar Participante
+                  </label>
                   <select
                     style={adminStyles.input}
                     value={selectedPatientId}
                     onChange={(e) => setSelectedPatientId(e.target.value)}
                   >
-                    <option value="">-- Selecciona un paciente --</option>
+                    <option value="">-- Selecciona un participante --</option>
                     {patients.map((p) => (
                       <option key={p.id_usuario} value={p.id_usuario}>
                         {p.nombres} {p.apellidos}
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label style={adminStyles.label}>
-                    Investigador (Opcional)
-                  </label>
-                  <input
-                    style={adminStyles.input}
-                    placeholder="Tu nombre"
-                    value={investigatorName}
-                    onChange={(e) => setInvestigatorName(e.target.value)}
-                  />
                 </div>
                 <Button
                   variant="primary"
@@ -660,7 +627,7 @@ export default function AdminPanelModule({ onExit }) {
                         borderBottom: "1px solid #E5E7EB",
                       }}
                     >
-                      Paciente
+                      Participante
                     </th>
                     <th
                       style={{
@@ -727,15 +694,6 @@ export default function AdminPanelModule({ onExit }) {
           </div>
         </div>
       </main>
-
-      {/* MODAL DE EVALUACIÓN (Se muestra si hay un paciente seleccionado) */}
-      {selectedPatientForRisk && (
-        <RiskModal
-          patient={selectedPatientForRisk}
-          onClose={() => setSelectedPatientForRisk(null)}
-          onSave={handleSaveRisk}
-        />
-      )}
     </div>
   );
 }

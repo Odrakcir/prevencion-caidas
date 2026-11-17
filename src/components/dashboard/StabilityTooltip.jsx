@@ -23,8 +23,7 @@ export default function StabilityTooltip({ point }) {
         }}
       >
         <strong style={{ fontSize: "18px", color: "#111827" }}>
-          Horario: {point.time} hrs — {point.label} ({point.stability}%
-          Estabilidad)
+          Hora: {point.time} — {point.label} ({point.stability}% Estabilidad)
         </strong>
       </div>
 
@@ -32,29 +31,27 @@ export default function StabilityTooltip({ point }) {
         {point.detail}
       </p>
 
-      {point.tilt && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "12px",
-            borderTop: "1.5px solid #E5E7EB",
-            paddingTop: "10px",
-            fontSize: "14px",
-            color: "#374151",
-          }}
-        >
-          <div>
-            Inclinación Torso: <strong>{point.tilt}°</strong>
-          </div>
-          <div>
-            Aceleración: <strong>{point.accelG} G</strong>
-          </div>
-          <div>
-            Fuerza Pisada: <strong>{point.fsr}%</strong>
-          </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: "12px",
+          borderTop: "1.5px solid #E5E7EB",
+          paddingTop: "10px",
+          fontSize: "14px",
+          color: "#374151",
+        }}
+      >
+        <div>
+          Inclinación Torso: <strong>{point.tilt}°</strong>
         </div>
-      )}
+        <div>
+          Presión Plantar: <strong>{point.fsr} N</strong>
+        </div>
+        <div>
+          Cadencia: <strong>{point.cadencia || 0} pasos/min</strong>
+        </div>
+      </div>
     </div>
   );
 }

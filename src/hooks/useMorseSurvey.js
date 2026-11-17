@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { QUESTIONS } from "../constants/surveyData";
+import { QUESTIONS, ENVIRONMENTAL_HAZARDS } from "../constants/surveyData";
 
 export function useMorseSurvey() {
   const [answers, setAnswers] = useState({});
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [hazards, setHazards] = useState({
-    rugs: false,
-    lighting: false,
-    bars: false,
-    obstacles: false,
-  });
+  // Inicializamos los peligros dinámicamente con los IDs del arreglo
+  const [hazards, setHazards] = useState(
+    ENVIRONMENTAL_HAZARDS.reduce((acc, h) => ({ ...acc, [h.id]: false }), {}),
+  );
 
   const morseScore = Object.keys(answers).reduce((total, key) => {
     return answers[key]
@@ -44,7 +42,9 @@ export function useMorseSurvey() {
 
   const reset = () => {
     setAnswers({});
-    setHazards({ rugs: false, lighting: false, bars: false, obstacles: false });
+    setHazards(
+      ENVIRONMENTAL_HAZARDS.reduce((acc, h) => ({ ...acc, [h.id]: false }), {}),
+    );
     setCurrentQuestion(0);
   };
 

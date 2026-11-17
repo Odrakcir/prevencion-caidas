@@ -1,41 +1,4 @@
-// Ítems preventivos basados en la Escala de Caídas de Morse
-export const QUESTIONS = [
-  {
-    id: "caidas",
-    text: "¿Ha tenido algún tropiezo o caída en los últimos meses?",
-    points: 25,
-  },
-  {
-    id: "diagnostico",
-    text: "¿Padece de más de una enfermedad o diagnóstico médico?",
-    points: 15,
-  },
-  {
-    id: "ayuda",
-    text: "Al caminar en casa, ¿siente la necesidad de apoyarse en muebles, muros o usar bastón?",
-    points: 15,
-  },
-  {
-    id: "marcha",
-    text: "Al ponerse de pie, ¿siente que su marcha es lenta, inestable o le cuesta dar el primer paso?",
-    points: 10,
-  },
-  {
-    id: "mental",
-    text: "¿Siente que a veces olvida sus propias limitaciones físicas al intentar caminar o levantarse apurado?",
-    points: 15,
-  },
-];
-
-// Módulo de Peligros Ambientales
-export const ENVIRONMENTAL_HAZARDS = [
-  { id: "rugs", label: "Alfombras sueltas en pasillos o dormitorio" },
-  { id: "lighting", label: "Mala iluminación nocturna (trayecto al baño)" },
-  { id: "bars", label: "Falta de barras de sujeción en ducha o WC" },
-  { id: "obstacles", label: "Obstáculos o cables sueltos en el suelo" },
-];
-
-// Datos detallados del Historial Diario (Por horas)
+// Datos temporales para el gráfico (hasta que se conecte el ESP32)
 export const HOURLY_DATA = [
   {
     time: "08:00",
@@ -46,9 +9,7 @@ export const HOURLY_DATA = [
     tilt: 3.2,
     accelG: 0.98,
     fsr: 48,
-    device: "ESP32_LUMBAR_01",
-    detail:
-      "Caminata matutina fluida. Excelente estabilidad y soporte plantar.",
+    detail: "Caminata matutina fluida.",
   },
   {
     time: "10:00",
@@ -59,21 +20,18 @@ export const HOURLY_DATA = [
     tilt: 4.1,
     accelG: 0.96,
     fsr: 52,
-    device: "ESP32_LUMBAR_01",
-    detail: "Desplazamiento normal hacia la cocina. Sin asimetrías de paso.",
+    detail: "Desplazamiento normal.",
   },
   {
     time: "11:15",
     stability: 45,
     label: "Alerta Leve",
     statusColor: "#F59E0B",
-    event: "Asimetría rápida (Micro-tropiezo)",
+    event: "Micro-tropiezo",
     tilt: 16.4,
     accelG: 0.58,
     fsr: 18,
-    device: "ESP32_LUMBAR_01",
-    detail:
-      "Pérdida temporal de apoyo en pie derecho al cruzar el pasillo. Postura recuperada inmediatamente.",
+    detail: "Pérdida temporal de apoyo.",
   },
   {
     time: "13:00",
@@ -84,8 +42,7 @@ export const HOURLY_DATA = [
     tilt: 3.8,
     accelG: 0.97,
     fsr: 45,
-    device: "ESP32_LUMBAR_01",
-    detail: "Reposo / Almuerzo. Inclinación del torso en rangos óptimos.",
+    detail: "Reposo / Almuerzo.",
   },
   {
     time: "15:00",
@@ -96,21 +53,18 @@ export const HOURLY_DATA = [
     tilt: 4.5,
     accelG: 0.99,
     fsr: 50,
-    device: "ESP32_LUMBAR_01",
-    detail: "Caminata corta en el patio. Cadencia firme y segura.",
+    detail: "Caminata corta.",
   },
   {
     time: "17:30",
     stability: 35,
     label: "Alerta Crítica",
     statusColor: "#EF4444",
-    event: "Inclinación crítica (Pérdida de balance)",
+    event: "Pérdida de balance",
     tilt: 24.8,
     accelG: 0.35,
     fsr: 10,
-    device: "ESP32_LUMBAR_01",
-    detail:
-      "Inclinación brusca del torso al levantarse del sillón. Evento registrado y notificado.",
+    detail: "Inclinación brusca al levantarse.",
   },
   {
     time: "19:00",
@@ -121,8 +75,7 @@ export const HOURLY_DATA = [
     tilt: 3.6,
     accelG: 0.98,
     fsr: 47,
-    device: "ESP32_LUMBAR_01",
-    detail: "Marcha pausada en zona de estar. Soporte completo.",
+    detail: "Marcha pausada.",
   },
   {
     time: "21:00",
@@ -133,9 +86,7 @@ export const HOURLY_DATA = [
     tilt: 3.1,
     accelG: 0.98,
     fsr: 49,
-    device: "ESP32_LUMBAR_01",
-    detail:
-      "Sincronización activa en tiempo real. Usuario en posición segura de descanso.",
+    detail: "Sincronización activa.",
   },
 ];
 
@@ -146,7 +97,7 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 94%. Sin alertas registradas.",
+    detail: "Promedio: 94%.",
   },
   {
     time: "Mar",
@@ -154,16 +105,15 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 91%. Marcha segura en el hogar.",
+    detail: "Promedio: 91%.",
   },
   {
     time: "Mié",
     stability: 52,
     label: "Alerta Leve",
     statusColor: "#F59E0B",
-    event: "Micro-tropiezo en cocina",
-    detail:
-      "Promedio diario: 52%. Se detectó un tropiezo leve a las 11:40 hrs.",
+    event: "Micro-tropiezo",
+    detail: "Tropiezo leve en cocina.",
   },
   {
     time: "Jue",
@@ -171,7 +121,7 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 95%. Entorno despejado y seguro.",
+    detail: "Promedio: 95%.",
   },
   {
     time: "Vie",
@@ -179,7 +129,7 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 88%. Desplazamiento adecuado.",
+    detail: "Promedio: 88%.",
   },
   {
     time: "Sáb",
@@ -187,7 +137,7 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 93%. Acompañamiento familiar.",
+    detail: "Promedio: 93%.",
   },
   {
     time: "Dom",
@@ -195,6 +145,68 @@ export const WEEKLY_DATA = [
     label: "Estable",
     statusColor: "#10B981",
     event: null,
-    detail: "Promedio de estabilidad: 96%. Excelente estabilidad de marcha.",
+    detail: "Promedio: 96%.",
   },
+];
+
+export const QUESTIONS = [
+  {
+    id: "caidas",
+    text: "¿Ha sufrido alguna caída o tropiezo en los últimos meses?",
+    points: 25,
+  },
+  {
+    id: "diagnostico",
+    text: "¿Padece más de una enfermedad crónica diagnosticada (hipertensión, diabetes, artrosis, etc.)?",
+    points: 15,
+  },
+  {
+    id: "ayuda",
+    text: "Al caminar dentro de su casa, ¿se apoya en paredes, muebles o requiere bastón/andador?",
+    points: 15,
+    // Nota clínica: Si se apoya en muebles son 30 pts, pero para la app simplificamos a Sí/No
+  },
+  {
+    id: "marcha",
+    text: "Al incorporarse de una silla o cama, ¿siente dificultad para dar los primeros pasos o nota balanceo en sus piernas?",
+    points: 10,
+  },
+  {
+    id: "mental",
+    text: "¿Siente que a veces intenta apurarse al caminar o levantarse olvidando sus limitaciones de equilibrio?",
+    points: 15,
+  },
+  {
+    id: "medicacion",
+    text: "¿Toma medicamentos para dormir, regular la presión o para los nervios que le provoquen somnolencia o mareos?",
+    points: 15,
+  },
+];
+
+// Los 15 peligros ambientales divididos por zonas
+export const ENVIRONMENTAL_HAZARDS = [
+  // Sala
+  { id: "A1", label: "Alfombras sueltas no fijadas", zone: "Sala" },
+  { id: "A2", label: "Cables u obstáculos en el paso", zone: "Sala" },
+  { id: "A3", label: "Sillones demasiado bajos o blandos", zone: "Sala" },
+  // Cocina
+  { id: "B1", label: "Pisos resbaladizos (grasa/agua)", zone: "Cocina" },
+  { id: "B2", label: "Almacenamiento en altura (estirarse)", zone: "Cocina" },
+  { id: "B3", label: "Alfombrillas que se doblan", zone: "Cocina" },
+  // Dormitorio
+  { id: "C1", label: "Falta de luz nocturna", zone: "Dormitorio" },
+  { id: "C2", label: "Cama muy alta o muy baja", zone: "Dormitorio" },
+  {
+    id: "C3",
+    label: "Usa pantuflas sin talón o va descalzo",
+    zone: "Dormitorio",
+  },
+  // Baño
+  { id: "D1", label: "Falta de barras de sujeción (ducha/WC)", zone: "Baño" },
+  { id: "D2", label: "Ducha sin goma antideslizante", zone: "Baño" },
+  { id: "D3", label: "Borde de tina alto o difícil de pasar", zone: "Baño" },
+  // Pasillos
+  { id: "E1", label: "Desniveles o gradas sin señalizar", zone: "Pasillos" },
+  { id: "E2", label: "Escaleras sin pasamanos firmes", zone: "Pasillos" },
+  { id: "E3", label: "Iluminación general muy tenue", zone: "Pasillos" },
 ];

@@ -1,28 +1,39 @@
 import { supabase } from "./supabaseClient";
 
 // 1. Iniciar una nueva sesión de prueba
-export async function startSession(idUsuario, nombreInvestigador) {
-  // Obtenemos el usuario autenticado actualmente (el investigador logueado)
+export async function startSession(idUsuario) {
+  // 1. Verificar sesión
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
+  if (sessionError || !session) {
+    console.error("Error de sesión:", sessionError);
+    throw new Error(
+      "No hay sesión activa. Por favor, vuelve a iniciar sesión.",
+    );
+  }
+
+  console.log("Iniciando sesión con token de:", session.user.email);
+
+  // 2. Intentar insertar
   const { data, error } = await supabase
     .from("sesiones_prueba")
     .insert([
       {
         id_usuario: idUsuario,
-        // Si el investigador llenó el campo manualmente, usamos ese.
-        // Si no, usamos el correo del usuario logueado en Supabase Auth.
-        nombre_investigador:
-          nombreInvestigador || user?.email || "Investigador Desconocido",
         estado: "activa",
       },
     ])
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("Error al insertar en Supabase:", error);
+    throw error;
+  }
+
   return data;
 }
 
