@@ -29,7 +29,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
 
   // IP del ESP32 persistente en localStorage
   const [esp32Ip, setEsp32Ip] = useState(
-    () => localStorage.getItem("esp32_ip") || "192.168.1.150",
+    () => localStorage.getItem("esp32_ip") || "10.242.196.70",
   );
 
   // Formulario de nuevo participante
