@@ -1,5 +1,4 @@
 import { useIsDesktop } from "../../hooks/useDesktop";
-import { HOURLY_DATA, WEEKLY_DATA } from "../../constants/surveyData";
 
 export default function StabilityChartSvg({
   filteredDataSet,
@@ -8,13 +7,22 @@ export default function StabilityChartSvg({
   onSelectPoint,
 }) {
   const isDesktop = useIsDesktop();
-
-  const xCoordsHoy = [60, 120, 180, 240, 300, 360, 420, 470];
-  const yCoordsHoy = [30, 34, 155, 38, 35, 170, 32, 28];
-  const xCoordsSem = [60, 128, 196, 264, 332, 400, 468];
-  const yCoordsSem = [32, 38, 142, 28, 45, 35, 28];
-
   const isToday = graphTimeframe === "today";
+
+  // Mostramos un máximo de 20 puntos en el gráfico para que no se sature
+  const displayData = filteredDataSet.slice(-20);
+  const totalPoints = displayData.length;
+
+  // Lógica matemática para distribuir los puntos en el eje X (de 60 a 470)
+  const startX = 60;
+  const endX = 470;
+  const stepX = totalPoints > 1 ? (endX - startX) / (totalPoints - 1) : 0;
+
+  // Calculamos el promedio para la línea de fondo si no hay datos
+  const avgStability =
+    totalPoints > 0
+      ? displayData.reduce((acc, curr) => acc + curr.stability, 0) / totalPoints
+      : 100;
 
   return (
     <div
@@ -34,13 +42,13 @@ export default function StabilityChartSvg({
         style={{ width: "100%", height: "100%", overflow: "visible" }}
       >
         <defs>
-          <linearGradient id="areaGradientV9" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#0D9488" stopOpacity="0.35" />
             <stop offset="100%" stopColor="#0D9488" stopOpacity="0.0" />
           </linearGradient>
         </defs>
 
-        {/* Bandas de color */}
+        {/* Bandas de color de fondo */}
         <rect
           x="50"
           y="20"
@@ -95,7 +103,7 @@ export default function StabilityChartSvg({
           strokeDasharray="4"
         />
 
-        {/* Etiquetas eje Y */}
+        {/* Etiquetas Eje Y */}
         <text
           x="42"
           y="24"
@@ -127,30 +135,31 @@ export default function StabilityChartSvg({
           0%
         </text>
 
-        {/* Trazado */}
-        {isToday ? (
+        {/* TRAZADO DINÁMICO */}
+        {displayData.length > 1 && (
           <>
+            {/* Área de relleno debajo de la curva */}
             <path
-              d="M 60 30 L 120 34 L 180 155 L 240 38 L 300 35 L 360 170 L 420 32 L 470 28 L 470 195 L 60 195 Z"
-              fill="url(#areaGradientV9)"
+              d={`M ${startX} 195 
+                 ${displayData
+                   .map((d, i) => {
+                     const x = startX + i * stepX;
+                     const y = 195 - (d.stability / 100) * 175; // Mapea 0-100% a Y (195-20)
+                     return `L ${x} ${y}`;
+                   })
+                   .join(" ")} 
+                 L ${startX + (totalPoints - 1) * stepX} 195 Z`}
+              fill="url(#areaGradient)"
             />
+            {/* Línea de la curva */}
             <path
-              d="M 60 30 L 120 34 L 180 155 L 240 38 L 300 35 L 360 170 L 420 32 L 470 28"
-              fill="none"
-              stroke="#0D9488"
-              strokeWidth="4.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        ) : (
-          <>
-            <path
-              d="M 60 32 L 128 38 L 196 142 L 264 28 L 332 45 L 400 35 L 468 28 L 468 195 L 60 195 Z"
-              fill="url(#areaGradientV9)"
-            />
-            <path
-              d="M 60 32 L 128 38 L 196 142 L 264 28 L 332 45 L 400 35 L 468 28"
+              d={`M ${displayData
+                .map((d, i) => {
+                  const x = startX + i * stepX;
+                  const y = 195 - (d.stability / 100) * 175;
+                  return `${i === 0 ? "" : "L"} ${x} ${y}`;
+                })
+                .join(" ")}`}
               fill="none"
               stroke="#0D9488"
               strokeWidth="4.5"
@@ -160,19 +169,19 @@ export default function StabilityChartSvg({
           </>
         )}
 
-        {/* Nodos */}
-        {filteredDataSet.map((d) => {
-          const rawIndex = isToday
-            ? HOURLY_DATA.findIndex((item) => item.time === d.time)
-            : WEEKLY_DATA.findIndex((item) => item.time === d.time);
-
-          const x = isToday ? xCoordsHoy[rawIndex] : xCoordsSem[rawIndex];
-          const y = isToday ? yCoordsHoy[rawIndex] : yCoordsSem[rawIndex];
+        {/* NODOS (Puntos clickeables) */}
+        {displayData.map((d, i) => {
+          const x = startX + i * stepX;
+          const y = 195 - (d.stability / 100) * 175;
           const isSelected = selectedGraphPoint?.time === d.time;
           const isAlert = d.event !== null;
 
           return (
-            <g key={d.time} cursor="pointer" onClick={() => onSelectPoint(d)}>
+            <g
+              key={`${d.time}-${i}`}
+              cursor="pointer"
+              onClick={() => onSelectPoint(d)}
+            >
               {isSelected && (
                 <circle
                   cx={x}
@@ -201,22 +210,43 @@ export default function StabilityChartSvg({
                   fontWeight="800"
                   textAnchor="middle"
                 >
-                  ⚠️ Alerta
+                  ⚠️
                 </text>
               )}
-              <text
-                x={x}
-                y="218"
-                fill={isSelected ? "#0D9488" : "#374151"}
-                fontSize="12"
-                fontWeight={isSelected ? "800" : "700"}
-                textAnchor="middle"
-              >
-                {d.time}
-              </text>
+
+              {/* Mostramos la hora solo en algunos puntos para evitar que se superpongan */}
+              {(i === 0 ||
+                i === totalPoints - 1 ||
+                i % Math.ceil(totalPoints / 6) === 0) && (
+                <text
+                  x={x}
+                  y="218"
+                  fill={isSelected ? "#0D9488" : "#374151"}
+                  fontSize="11"
+                  fontWeight={isSelected ? "800" : "700"}
+                  textAnchor="middle"
+                >
+                  {d.time.slice(0, 5)}{" "}
+                  {/* Corta los segundos para que se vea más limpio */}
+                </text>
+              )}
             </g>
           );
         })}
+
+        {/* Mensaje si no hay datos */}
+        {displayData.length === 0 && (
+          <text
+            x="250"
+            y="110"
+            fill="#9CA3AF"
+            fontSize="14"
+            fontWeight="600"
+            textAnchor="middle"
+          >
+            Esperando datos de la sesión...
+          </text>
+        )}
       </svg>
     </div>
   );

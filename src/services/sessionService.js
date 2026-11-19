@@ -170,3 +170,43 @@ export async function fetchEvaluations() {
     nivel_riesgo: e.usuarios?.nivel_riesgo_actual || "Sin evaluar",
   }));
 }
+
+// 9. Obtener la última sesión (activa o finalizada) de un participante
+export async function fetchLatestSessionByUser(idUsuario) {
+  const { data, error } = await supabase
+    .from("sesiones_prueba")
+    .select("*")
+    .eq("id_usuario", idUsuario)
+    .order("fecha_inicio", { ascending: false })
+    .limit(1)
+    .maybeSingle(); // Usamos maybeSingle para que no explote si no hay sesiones
+
+  if (error) throw error;
+  return data; // Retorna null si el usuario no tiene sesiones
+}
+
+// 10. Obtener TODAS las sesiones de un participante
+export async function fetchAllSessionsByUser(idUsuario) {
+  const { data, error } = await supabase
+    .from("sesiones_prueba")
+    .select("*")
+    .eq("id_usuario", idUsuario)
+    .order("fecha_inicio", { ascending: true }); // Orden cronológico
+
+  if (error) throw error;
+  return data;
+}
+
+// 11. Obtener la telemetría de un arreglo de IDs de sesiones
+export async function fetchTelemetryBySessionIds(sessionIds) {
+  if (!sessionIds || sessionIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("eventos_telemetria")
+    .select("*")
+    .in("id_sesion", sessionIds) // Busca en cualquiera de estas sesiones
+    .order("fecha_hora", { ascending: true });
+
+  if (error) throw error;
+  return data;
+}

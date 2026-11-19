@@ -1,11 +1,13 @@
 import { getStyles } from "../../styles/theme";
 import { useIsDesktop } from "../../hooks/useDesktop";
-import { HOURLY_DATA, WEEKLY_DATA } from "../../constants/surveyData";
+import { useRealtimeStability } from "../../hooks/useRealtimeStability"; // <-- Importamos el hook
+import { WEEKLY_DATA } from "../../constants/surveyData";
 import StabilityChartSvg from "./StabilityChartSvg";
 import StabilityLegend from "./StabilityLegend";
 import StabilityTooltip from "./StabilityTooltip";
 
 export default function StabilityChart({
+  sessionId, // <-- Nueva prop que viene del AdminPanel
   graphTimeframe,
   setGraphTimeframe,
   graphFilter,
@@ -16,16 +18,28 @@ export default function StabilityChart({
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
 
-  const currentDataSet = graphTimeframe === "today" ? HOURLY_DATA : WEEKLY_DATA;
+  // Usamos el hook que se conecta a Supabase.
+  // Si el sessionId es un arreglo, traerá todo el historial. Si es un string, traerá solo esa sesión.
+  const { liveData, isConnected } = useRealtimeStability(sessionId);
+
+  // Seleccionamos el set de datos dependiendo del botón (Hoy vs Semana)
+  // Nota: Para la vista semanal aún usamos los datos estáticos (WEEKLY_DATA),
+  // ya que agrupar por días requiere un procesamiento extra en el backend.
+  const currentDataSet = graphTimeframe === "today" ? liveData : WEEKLY_DATA;
+
   const filteredDataSet =
     graphFilter === "alerts"
       ? currentDataSet.filter((d) => d.event !== null)
       : currentDataSet;
 
-  const avgStability = Math.round(
-    currentDataSet.reduce((acc, curr) => acc + curr.stability, 0) /
-      currentDataSet.length,
-  );
+  const avgStability =
+    currentDataSet.length > 0
+      ? Math.round(
+          currentDataSet.reduce((acc, curr) => acc + curr.stability, 0) /
+            currentDataSet.length,
+        )
+      : 0;
+
   const totalAlerts = currentDataSet.filter((d) => d.event !== null).length;
 
   return (
@@ -48,13 +62,30 @@ export default function StabilityChart({
               fontWeight: "800",
               color: "#0D9488",
               margin: "0 0 4px 0",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
             }}
           >
-            Historial Diario de Estabilidad y Marcha
+            Historial de Estabilidad y Marcha
+            {isConnected && (
+              <span
+                style={{
+                  fontSize: "12px",
+                  backgroundColor: "#ECFDF5",
+                  color: "#047857",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                }}
+              >
+                🟢 EN VIVO
+              </span>
+            )}
           </h2>
           <p style={{ fontSize: "15px", color: "#4B5563", margin: 0 }}>
-            Evolución del equilibrio a lo largo del día. Seleccione los puntos
-            para ver el detalle.
+            {sessionId
+              ? "Recibiendo datos de los sensores."
+              : "Selecciona un participante o inicia una sesión."}
           </p>
         </div>
 
@@ -82,10 +113,11 @@ export default function StabilityChart({
             }}
             onClick={() => {
               setGraphTimeframe("today");
-              setSelectedGraphPoint(HOURLY_DATA[HOURLY_DATA.length - 1]);
+              if (liveData.length > 0)
+                setSelectedGraphPoint(liveData[liveData.length - 1]);
             }}
           >
-            Hoy (Detalle Horario)
+            Detalle de Sesión
           </button>
           <button
             style={{
@@ -105,7 +137,7 @@ export default function StabilityChart({
               setSelectedGraphPoint(WEEKLY_DATA[0]);
             }}
           >
-            Semana (7 Días)
+            Resumen Semanal
           </button>
         </div>
       </div>

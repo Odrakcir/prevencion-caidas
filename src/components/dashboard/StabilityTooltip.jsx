@@ -23,18 +23,23 @@ export default function StabilityTooltip({ point }) {
         }}
       >
         <strong style={{ fontSize: "18px", color: "#111827" }}>
-          Hora: {point.time} — {point.label} ({point.stability}% Estabilidad)
+          Hora: {point.time} — Estabilidad: {point.stability}%
         </strong>
       </div>
 
-      <p style={{ margin: "0 0 10px 0", color: "#1F2937", lineHeight: "1.6" }}>
-        {point.detail}
-      </p>
+      {/* Solo mostramos el texto del evento si es una alerta real */}
+      {isAlert && (
+        <p
+          style={{ margin: "0 0 10px 0", color: "#B91C1C", fontWeight: "600" }}
+        >
+          ⚠️ {point.event}
+        </p>
+      )}
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: "12px",
           borderTop: "1.5px solid #E5E7EB",
           paddingTop: "10px",
@@ -43,13 +48,19 @@ export default function StabilityTooltip({ point }) {
         }}
       >
         <div>
-          Inclinación Torso: <strong>{point.tilt}°</strong>
+          Inclinación: <strong>{point.tilt}°</strong>
         </div>
         <div>
-          Presión Plantar: <strong>{point.fsr} N</strong>
+          Presión: <strong>{point.fsr} N</strong>
         </div>
         <div>
-          Cadencia: <strong>{point.cadencia || 0} pasos/min</strong>
+          Cadencia: <strong>{point.cadencia || 0} p/min</strong>
+        </div>
+        <div>
+          Estado Pie:{" "}
+          <strong style={{ textTransform: "capitalize" }}>
+            {point.estadoPie || "-"}
+          </strong>
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getStyles } from "../styles/theme";
 import { useIsDesktop } from "../hooks/useDesktop";
+import PrintModal from "../components/dashboard/PrintModal";
 import Button from "../components/common/Button";
 import Header from "../components/common/Header";
 import StabilityChart from "../components/dashboard/StabilityChart";
@@ -12,6 +13,9 @@ import {
   createPatient,
   sendCommandToESP32,
   fetchEvaluations,
+  fetchAllSessionsByUser,
+  fetchLatestSessionByUser,
+  fetchTelemetryBySessionIds,
 } from "../services/sessionService";
 import { HOURLY_DATA } from "../constants/surveyData";
 
@@ -26,6 +30,20 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // --- ESTADOS DE GRAFICO ---
+  const [viewMode, setViewMode] = useState("live");
+  const [allSessionIds, setAllSessionIds] = useState([]);
+  const [graphSessionId, setGraphSessionId] = useState(null);
+
+  // --- ESTADOS DEL REPORTE ---
+  const [showReport, setShowReport] = useState(false);
+  const [reportData, setReportData] = useState({
+    patient: null,
+    risk: null,
+    hazards: {},
+    metrics: {},
+  });
 
   // IP del ESP32 persistente en localStorage
   const [esp32Ip, setEsp32Ip] = useState(
@@ -103,12 +121,116 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
     }
   };
 
+  const handlePatientSelect = async (e) => {
+    const id = e.target.value;
+    setSelectedPatientId(id);
+
+    if (id) {
+      try {
+        const lastSession = await fetchLatestSessionByUser(id);
+        if (lastSession) {
+          setGraphSessionId(lastSession.id_sesion);
+        } else {
+          setGraphSessionId(null);
+        }
+
+        const allSessions = await fetchAllSessionsByUser(id);
+        setAllSessionIds(allSessions.map((s) => s.id_sesion));
+      } catch (err) {
+        console.error("Error buscando sesiones:", err);
+      }
+    } else {
+      setGraphSessionId(null);
+      setAllSessionIds([]);
+    }
+  };
+
+  const handleGenerateReport = async (patient) => {
+    // 1. Obtenemos las sesiones del paciente
+    const patientSessions = await fetchAllSessionsByUser(patient.id_usuario);
+    const sessionIds = patientSessions.map((s) => s.id_sesion);
+    const telemetry = await fetchTelemetryBySessionIds(sessionIds);
+
+    // 2. Calculamos los promedios de telemetría
+    let metrics = { avgStability: 0, avgTilt: 0, avgAccel: 0, avgCadence: 0 };
+    if (telemetry.length > 0) {
+      let sumStability = 0,
+        sumTilt = 0,
+        sumAccel = 0,
+        sumCadence = 0;
+      telemetry.forEach((event) => {
+        const data =
+          typeof event.datos_cinematicos === "string"
+            ? JSON.parse(event.datos_cinematicos)
+            : event.datos_cinematicos;
+        sumTilt +=
+          Math.acos(
+            (data.az || 9.8) /
+              Math.sqrt(
+                (data.ax || 0) ** 2 +
+                  (data.ay || 0) ** 2 +
+                  (data.az || 9.8) ** 2,
+              ),
+          ) *
+          (180 / Math.PI);
+        sumAccel += Math.sqrt(
+          (data.ax || 0) ** 2 + (data.ay || 0) ** 2 + (data.az || 9.8) ** 2,
+        );
+        sumCadence += data.cadencia || 0;
+        sumStability += data.estado_pie === "apoyado" ? 95 : 85;
+      });
+      metrics = {
+        avgStability: Math.round(sumStability / telemetry.length),
+        avgTilt: Math.round(sumTilt / telemetry.length),
+        avgAccel: Number((sumAccel / telemetry.length).toFixed(2)),
+        avgCadence: Math.round(sumCadence / telemetry.length),
+      };
+    }
+
+    // 3. Buscamos el riesgo
+    const riskLabel = getLastRisk(patient.id_usuario);
+
+    // 4. Buscamos los peligros de la ÚLTIMA evaluación de este paciente
+    // Buscamos en el arreglo de evaluaciones la más reciente para este usuario
+    const lastEval = evaluations.find(
+      (e) => e.id_usuario === patient.id_usuario,
+    );
+
+    // Creamos un objeto de peligros basado en la evaluación (asumiendo que guardas los peligros ahí)
+    // Nota: Si los peligros están en la tabla 'peligros_ambientales', deberías hacer una consulta similar aquí.
+    const patientHazards = {
+      A1: lastEval?.alfombras_sueltas || false,
+      B1: lastEval?.pisos_resbaladizos || false,
+      C1: lastEval?.iluminacion_deficiente || false,
+      D1: lastEval?.ausencia_barras || false,
+      E1: lastEval?.desniveles || false,
+    };
+
+    setReportData({
+      patient,
+      risk: {
+        stars: riskLabel.includes("Alto")
+          ? 1
+          : riskLabel.includes("Medio")
+            ? 3
+            : 5,
+        safetyLabel:
+          riskLabel === "Sin evaluar" ? "Sin evaluación registrada" : riskLabel,
+      },
+      hazards: patientHazards,
+      metrics,
+    });
+
+    setShowReport(true);
+  };
+
   const handleStart = async () => {
     if (!selectedPatientId) return alert("Selecciona un participante.");
     setLoading(true);
     try {
-      const newSession = await startSession(selectedPatientId); // <-- Ya no pasamos el nombre
+      const newSession = await startSession(selectedPatientId);
       setActiveSessionId(newSession.id_sesion);
+      setGraphSessionId(newSession.id_sesion);
 
       const success = await sendCommandToESP32(
         esp32Ip,
@@ -143,7 +265,6 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
     }
   };
 
-  // Obtener el último riesgo para mostrarlo en la tabla
   const getLastRisk = (idUsuario) => {
     const patient = patients.find((p) => p.id_usuario === idUsuario);
     return patient?.nivel_riesgo_actual || "Sin evaluar";
@@ -448,21 +569,39 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                           {riskLabel}
                         </td>
                         <td style={{ padding: "8px 12px" }}>
-                          <button
-                            onClick={() => onStartEvaluation(p.id_usuario)}
-                            style={{
-                              padding: "4px 10px",
-                              fontSize: "12px",
-                              backgroundColor: "#0D9488",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "4px",
-                              cursor: "pointer",
-                              fontWeight: "600",
-                            }}
-                          >
-                            Evaluar Riesgo
-                          </button>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            {/* BOTONES DE ACCIÓN CORREGIDOS */}
+                            <button
+                              onClick={() => onStartEvaluation(p.id_usuario)}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "12px",
+                                backgroundColor: "#0D9488",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontWeight: "600",
+                              }}
+                            >
+                              Evaluar
+                            </button>
+                            <button
+                              onClick={() => handleGenerateReport(p)}
+                              style={{
+                                padding: "4px 10px",
+                                fontSize: "12px",
+                                backgroundColor: "#F3F4F6",
+                                color: "#374151",
+                                border: "1px solid #D1D5DB",
+                                borderRadius: "4px",
+                                cursor: "pointer",
+                                fontWeight: "600",
+                              }}
+                            >
+                              Reporte PDF
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -544,7 +683,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   <select
                     style={adminStyles.input}
                     value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
+                    onChange={handlePatientSelect}
                   >
                     <option value="">-- Selecciona un participante --</option>
                     {patients.map((p) => (
@@ -558,7 +697,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   variant="primary"
                   onClick={handleStart}
                   disabled={loading || !selectedPatientId}
-                  style={{ minHeight: "40px", marginBottom: "12px" }}
+                  style={{ minHeight: "20px", marginBottom: "12px" }}
                 >
                   Iniciar Prueba
                 </Button>
@@ -591,11 +730,54 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
             <div
               style={{
                 padding: "20px",
-                opacity: activeSessionId ? 1 : 0.4,
-                pointerEvents: activeSessionId ? "auto" : "none",
+                opacity: activeSessionId || graphSessionId ? 1 : 0.4,
+                pointerEvents:
+                  activeSessionId || graphSessionId ? "auto" : "none",
               }}
             >
+              {selectedPatientId && (
+                <div
+                  style={{ display: "flex", gap: "8px", marginBottom: "16px" }}
+                >
+                  <button
+                    onClick={() => setViewMode("live")}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      border: "none",
+                      backgroundColor:
+                        viewMode === "live" ? "#0D9488" : "#E5E7EB",
+                      color: viewMode === "live" ? "#fff" : "#374151",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Última Sesión
+                  </button>
+                  <button
+                    onClick={() => setViewMode("history")}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      border: "none",
+                      backgroundColor:
+                        viewMode === "history" ? "#0D9488" : "#E5E7EB",
+                      color: viewMode === "history" ? "#fff" : "#374151",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Histórico Completo
+                  </button>
+                </div>
+              )}
+
               <StabilityChart
+                sessionId={
+                  viewMode === "history"
+                    ? allSessionIds
+                    : activeSessionId || graphSessionId
+                }
                 graphTimeframe={graphTimeframe}
                 setGraphTimeframe={setGraphTimeframe}
                 graphFilter={graphFilter}
@@ -635,14 +817,6 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                         borderBottom: "1px solid #E5E7EB",
                       }}
                     >
-                      Investigador
-                    </th>
-                    <th
-                      style={{
-                        padding: "10px 12px",
-                        borderBottom: "1px solid #E5E7EB",
-                      }}
-                    >
                       Estado
                     </th>
                     <th
@@ -663,9 +837,6 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                     >
                       <td style={{ padding: "10px 12px", fontWeight: "500" }}>
                         {s.usuarios?.nombres || "Desconocido"}
-                      </td>
-                      <td style={{ padding: "10px 12px", color: "#4B5563" }}>
-                        {s.nombre_investigador || "-"}
                       </td>
                       <td style={{ padding: "10px 12px" }}>
                         <span
@@ -692,6 +863,19 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
               </table>
             </div>
           </div>
+
+          {/* 5. MODAL DE REPORTE */}
+          {showReport && (
+            <PrintModal
+              show={showReport}
+              onClose={() => setShowReport(false)}
+              patient={reportData.patient}
+              risk={reportData.risk}
+              hazards={reportData.hazards}
+              contact={{ name: "Red de Apoyo", phone: "-" }}
+              metrics={reportData.metrics}
+            />
+          )}
         </div>
       </main>
     </div>
