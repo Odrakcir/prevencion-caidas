@@ -4,7 +4,11 @@ import { useIsDesktop } from "./hooks/useDesktop";
 import { useMorseSurvey } from "./hooks/useMorseSurvey";
 import { getRiskStatus } from "./utils/riskStatus";
 import { supabase } from "./services/supabaseClient";
-import { saveEvaluation } from "./services/sessionService";
+import {
+  saveEvaluation,
+  ensureUserProfile,
+  fetchUserLatestContext,
+} from "./services/sessionService";
 
 import Header from "./components/common/Header";
 import SurveyModule from "./modules/SurveyModule";
@@ -16,8 +20,17 @@ import LoginModule from "./modules/LoginModule";
 export default function App() {
   // --- ESTADOS DE AUTENTICACIÓN ---
   const [session, setSession] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // --- CONTEXTO REAL DEL PARTICIPANTE (sesiones, peligros guardados, contacto) ---
+  const [userContext, setUserContext] = useState({
+    latestSessionId: null,
+    allSessionIds: [],
+    savedHazards: null,
+    savedContact: null,
+  });
 
   // --- ESTADOS DE LA APP NORMAL ---
   const [roleMode, setRoleMode] = useState("recommendations");
@@ -33,34 +46,115 @@ export default function App() {
   const survey = useMorseSurvey();
   const risk = getRiskStatus(survey.morseScore, survey.selectedHazardsCount);
 
-  // 1. Verificar sesión al cargar
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        const { data } = await supabase
-          .from("usuarios")
-          .select("is_admin")
-          .eq("id_usuario", session.user.id)
-          .single();
-        setIsAdmin(data?.is_admin || false);
-        setSession(session);
+  const hydrateUserSession = async (activeSession, preloadedProfile = null) => {
+    setSession(activeSession);
+    if (!activeSession?.user) {
+      setUserProfile(null);
+      setIsAdmin(false);
+      setUserContext({
+        latestSessionId: null,
+        allSessionIds: [],
+        savedHazards: null,
+        savedContact: null,
+      });
+      return;
+    }
+
+    let profile = preloadedProfile;
+    if (!profile) {
+      try {
+        profile = await ensureUserProfile(activeSession.user);
+      } catch (err) {
+        console.warn("No se pudo obtener/crear perfil en usuarios:", err);
       }
-      setCheckingAuth(false);
+    }
+
+    setUserProfile(profile);
+    const adminFlag = Boolean(profile?.is_admin);
+    setIsAdmin(adminFlag);
+
+    if (!adminFlag) {
+      const ctx = await fetchUserLatestContext(activeSession.user.id);
+      setUserContext(ctx);
+      if (ctx.savedContact?.name || ctx.savedContact?.phone) {
+        setContact((prev) =>
+          prev.name || prev.phone ? prev : ctx.savedContact,
+        );
+      }
+    }
+  };
+
+  // 1. Verificar sesión al cargar y escuchar cambios de autenticación
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getSession().then(async ({ data: { session: current } }) => {
+      if (!isMounted) return;
+      if (current) {
+        await hydrateUserSession(current);
+      }
+      if (isMounted) setCheckingAuth(false);
     });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT" && isMounted) {
+        setSession(null);
+        setUserProfile(null);
+        setIsAdmin(false);
+        setIsAdminEvaluating(false);
+        setEvaluatingUserId(null);
+        setUserContext({
+          latestSessionId: null,
+          allSessionIds: [],
+          savedHazards: null,
+          savedContact: null,
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const handleLoginSuccess = (newSession, isAdminUser) => {
-    setSession(newSession);
-    setIsAdmin(isAdminUser);
+  const handleLoginSuccess = async (newSession, profile) => {
+    await hydrateUserSession(newSession, profile);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    setUserProfile(null);
     setIsAdmin(false);
-    setIsAdminEvaluating(false); // Limpiamos si estaba evaluando
+    setIsAdminEvaluating(false);
     setEvaluatingUserId(null);
+    setContact({ name: "", phone: "" });
+    setScreen("onboarding");
+    setRoleMode("recommendations");
     window.history.pushState({}, "", "/");
+  };
+
+  const handleCompleteUserEvaluation = async () => {
+    if (session?.user?.id && userProfile?.id_usuario) {
+      try {
+        await saveEvaluation(
+          session.user.id,
+          survey.answers,
+          survey.hazards,
+          survey.morseScore,
+          risk.label,
+          contact,
+        );
+        const updatedCtx = await fetchUserLatestContext(session.user.id);
+        setUserContext(updatedCtx);
+      } catch (err) {
+        console.warn("No se pudo guardar la evaluación en Supabase:", err);
+      }
+    }
+    setScreen("dashboard");
   };
 
   const resetAll = () => {
@@ -94,8 +188,10 @@ export default function App() {
       await saveEvaluation(
         evaluatingUserId,
         survey.answers,
+        survey.hazards,
         survey.morseScore,
         risk.label,
+        contact,
       );
       alert("Evaluación guardada exitosamente.");
       setIsAdminEvaluating(false);
@@ -178,46 +274,14 @@ export default function App() {
     <div style={styles.wrapper}>
       <main style={styles.container}>
         <div>
-          {/* CONTENEDOR DEL HEADER Y LOGOUT */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start", // Alinea arriba
-              gap: "16px",
-              marginBottom: "16px",
+          <Header
+            roleMode={roleMode}
+            onChangeRole={(newRole) => {
+              setRoleMode(newRole);
+              if (screen !== "dashboard") setScreen("dashboard");
             }}
-          >
-            {/* El Header ocupa el mayor espacio posible */}
-            <div style={{ flex: 1 }}>
-              <Header
-                roleMode={roleMode}
-                onChangeRole={(newRole) => {
-                  setRoleMode(newRole);
-                  if (screen !== "dashboard") setScreen("dashboard");
-                }}
-              />
-            </div>
-
-            {/* El botón de Salir se queda a la derecha */}
-            <button
-              onClick={handleLogout}
-              style={{
-                backgroundColor: "#F3F4F6",
-                color: "#4B5563",
-                border: "1px solid #D1D5DB",
-                padding: "8px 16px",
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "600",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                marginTop: "10px", // Un pequeño margen para que no choque con el borde superior
-              }}
-            >
-              Salir
-            </button>
-          </div>
+            onLogout={handleLogout}
+          />
 
           {screen !== "dashboard" && roleMode === "recommendations" && (
             <div style={styles.progressBarContainer}>
@@ -232,7 +296,8 @@ export default function App() {
               contact={contact}
               setContact={setContact}
               survey={survey}
-              isAdminMode={false} // <-- Modo normal
+              isAdminMode={false}
+              onUserComplete={handleCompleteUserEvaluation}
             />
           )}
 
@@ -243,6 +308,7 @@ export default function App() {
               selectedHazardsCount={survey.selectedHazardsCount}
               contact={contact}
               hazards={survey.hazards}
+              userProfile={userProfile}
               onReset={resetAll}
             />
           )}
@@ -254,6 +320,8 @@ export default function App() {
               selectedHazardsCount={survey.selectedHazardsCount}
               contact={contact}
               hazards={survey.hazards}
+              userProfile={userProfile}
+              userContext={userContext}
               onReset={resetAll}
             />
           )}

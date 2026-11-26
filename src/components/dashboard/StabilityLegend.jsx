@@ -1,89 +1,65 @@
-import { getStyles } from "../../styles/theme";
-import { useIsDesktop } from "../../hooks/useDesktop";
-
-const ZONES = [
-  {
-    bg: "#ECFDF5",
-    border: "#10B981",
-    title: "🟢 Zona Verde (80% - 100%)",
-    titleColor: "#047857",
-    subtitle: "Estabilidad Segura / Marcha Normal",
-    subtitleColor: "#065F46",
-  },
-  {
-    bg: "#FEF3C7",
-    border: "#F59E0B",
-    title: "🟡 Zona Amarilla (50% - 79%)",
-    titleColor: "#B45309",
-    subtitle: "Precaución / Desbalance Leve",
-    subtitleColor: "#92400E",
-  },
-  {
-    bg: "#FEF2F2",
-    border: "#EF4444",
-    title: "🔴 Zona Roja (0% - 49%)",
-    titleColor: "#B91C1C",
-    subtitle: "Alerta / Tropiezo Detectado",
-    subtitleColor: "#991B1B",
-  },
-];
-
 export default function StabilityLegend() {
-  const isDesktop = useIsDesktop();
+  const zones = [
+    {
+      color: "#059669",
+      bg: "#ECFDF5",
+      text: "#065F46",
+      label: "Estable",
+      range: "80–100%",
+    },
+    {
+      color: "#D97706",
+      bg: "#FFFBEB",
+      text: "#92400E",
+      label: "Precaución",
+      range: "50–79%",
+    },
+    {
+      color: "#DC2626",
+      bg: "#FEF2F2",
+      text: "#991B1B",
+      label: "Alerta",
+      range: "0–49%",
+    },
+  ];
 
   return (
     <div
       style={{
-        flex: isDesktop ? "0 0 260px" : "1 1 100%",
-        backgroundColor: "#F8FAFC",
-        border: "2px solid #CBD5E1",
-        borderRadius: "12px",
-        padding: "16px",
         display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-around",
-        gap: "12px",
-        boxSizing: "border-box",
+        flexWrap: "wrap",
+        gap: "8px",
+        marginBottom: "14px",
       }}
     >
-      <h4
-        style={{
-          margin: "0 0 4px 0",
-          fontSize: "16px",
-          fontWeight: "800",
-          color: "#111827",
-          borderBottom: "2px solid #E2E8F0",
-          paddingBottom: "6px",
-        }}
-      >
-        Leyenda de Niveles
-      </h4>
-
-      {ZONES.map((z) => (
+      {zones.map((z) => (
         <div
-          key={z.title}
+          key={z.label}
           style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "7px",
             backgroundColor: z.bg,
-            borderLeft: `5px solid ${z.border}`,
-            padding: "10px 12px",
-            borderRadius: "8px",
+            border: `1px solid ${z.color}33`,
+            padding: "5px 11px",
+            borderRadius: "999px",
+            fontSize: "12.5px",
+            fontWeight: "600",
+            color: z.text,
           }}
         >
-          <div
-            style={{ fontSize: "15px", fontWeight: "800", color: z.titleColor }}
-          >
-            {z.title}
-          </div>
-          <div
+          <span
             style={{
-              fontSize: "13px",
-              fontWeight: "600",
-              color: z.subtitleColor,
-              marginTop: "2px",
+              width: "9px",
+              height: "9px",
+              borderRadius: "50%",
+              backgroundColor: z.color,
+              flexShrink: 0,
             }}
-          >
-            {z.subtitle}
-          </div>
+          />
+          <span>
+            <strong>{z.label}</strong> ({z.range})
+          </span>
         </div>
       ))}
     </div>

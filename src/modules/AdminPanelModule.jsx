@@ -5,6 +5,7 @@ import PrintModal from "../components/dashboard/PrintModal";
 import Button from "../components/common/Button";
 import Header from "../components/common/Header";
 import StabilityChart from "../components/dashboard/StabilityChart";
+import { supabase } from "../services/supabaseClient";
 import {
   startSession,
   endSession,
@@ -17,7 +18,6 @@ import {
   fetchLatestSessionByUser,
   fetchTelemetryBySessionIds,
 } from "../services/sessionService";
-import { HOURLY_DATA } from "../constants/surveyData";
 
 export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const isDesktop = useIsDesktop();
@@ -27,6 +27,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const [patients, setPatients] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [evaluations, setEvaluations] = useState([]);
+  const [patientSessions, setPatientSessions] = useState([]); // Guarda las sesiones del paciente seleccionado
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -43,6 +44,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
     risk: null,
     hazards: {},
     metrics: {},
+    contact: {},
   });
 
   // IP del ESP32 persistente en localStorage
@@ -58,13 +60,13 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   });
   const [showAddForm, setShowAddForm] = useState(false);
 
-  // Gráfico
-  const [graphTimeframe, setGraphTimeframe] = useState("today");
-  const [graphFilter, setGraphFilter] = useState("all");
-  const [selectedGraphPoint, setSelectedGraphPoint] = useState(
-    HOURLY_DATA[HOURLY_DATA.length - 1],
-  );
+  // Recomendaciones y peligros ambientales del participante seleccionado
+  const [patientRecommendations, setPatientRecommendations] = useState([]);
+  const [patientHazards, setPatientHazards] = useState({});
 
+  // Filtro del gráfico (Todos / Alertas)
+  const [graphFilter, setGraphFilter] = useState("all");
+  const [selectedGraphPoint, setSelectedGraphPoint] = useState(null);
   // --- EFECTOS ---
   useEffect(() => {
     loadData();
@@ -86,6 +88,20 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
       if (active) {
         setActiveSessionId(active.id_sesion);
         setSelectedPatientId(active.id_usuario);
+        setGraphSessionId(active.id_sesion);
+        const [allSessions, { data: lastHazard }] = await Promise.all([
+          fetchAllSessionsByUser(active.id_usuario),
+          supabase
+            .from("peligros_ambientales")
+            .select("*")
+            .eq("id_usuario", active.id_usuario)
+            .order("fecha_registro", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        setPatientSessions(allSessions);
+        setAllSessionIds(allSessions.map((s) => s.id_sesion));
+        setPatientHazards(lastHazard || {});
       }
     } catch (err) {
       console.error("Error cargando datos:", err);
@@ -124,9 +140,30 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const handlePatientSelect = async (e) => {
     const id = e.target.value;
     setSelectedPatientId(id);
+    setSelectedGraphPoint(null);
+    setGraphFilter("all");
 
     if (id) {
       try {
+        // 1. Cargar recomendaciones y últimos peligros ambientales
+        const [{ data: recs }, { data: lastHazard }] = await Promise.all([
+          supabase
+            .from("recomendaciones")
+            .select("*")
+            .eq("id_usuario", id)
+            .order("fecha_generacion", { ascending: false }),
+          supabase
+            .from("peligros_ambientales")
+            .select("*")
+            .eq("id_usuario", id)
+            .order("fecha_registro", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
+        setPatientRecommendations(recs || []);
+        setPatientHazards(lastHazard || {});
+
+        // 2. Cargar sesiones
         const lastSession = await fetchLatestSessionByUser(id);
         if (lastSession) {
           setGraphSessionId(lastSession.id_sesion);
@@ -135,6 +172,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
         }
 
         const allSessions = await fetchAllSessionsByUser(id);
+        setPatientSessions(allSessions);
         setAllSessionIds(allSessions.map((s) => s.id_sesion));
       } catch (err) {
         console.error("Error buscando sesiones:", err);
@@ -142,11 +180,14 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
     } else {
       setGraphSessionId(null);
       setAllSessionIds([]);
+      setPatientSessions([]);
+      setPatientRecommendations([]);
+      setPatientHazards({});
     }
   };
 
   const handleGenerateReport = async (patient) => {
-    // 1. Obtenemos las sesiones del paciente
+    // 1. Obtenemos las sesiones del paciente y la telemetría
     const patientSessions = await fetchAllSessionsByUser(patient.id_usuario);
     const sessionIds = patientSessions.map((s) => s.id_sesion);
     const telemetry = await fetchTelemetryBySessionIds(sessionIds);
@@ -190,22 +231,33 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
     // 3. Buscamos el riesgo
     const riskLabel = getLastRisk(patient.id_usuario);
 
-    // 4. Buscamos los peligros de la ÚLTIMA evaluación de este paciente
-    // Buscamos en el arreglo de evaluaciones la más reciente para este usuario
-    const lastEval = evaluations.find(
-      (e) => e.id_usuario === patient.id_usuario,
-    );
+    // 4. Buscamos los peligros de la ÚLTIMA evaluación
+    const { data: lastHazard } = await supabase
+      .from("peligros_ambientales")
+      .select("*")
+      .eq("id_usuario", patient.id_usuario)
+      .order("fecha_registro", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    // Creamos un objeto de peligros basado en la evaluación (asumiendo que guardas los peligros ahí)
-    // Nota: Si los peligros están en la tabla 'peligros_ambientales', deberías hacer una consulta similar aquí.
     const patientHazards = {
-      A1: lastEval?.alfombras_sueltas || false,
-      B1: lastEval?.pisos_resbaladizos || false,
-      C1: lastEval?.iluminacion_deficiente || false,
-      D1: lastEval?.ausencia_barras || false,
-      E1: lastEval?.desniveles || false,
+      A1: lastHazard?.alfombras_sueltas || false,
+      B1: lastHazard?.alfombras_sueltas || false,
+      C1: lastHazard?.iluminacion_deficiente || false,
+      D1: lastHazard?.ausencia_barras || false,
+      E1: lastHazard?.obstaculos_ruta || false,
     };
 
+    // 5. Buscamos el último contacto de emergencia
+    const { data: lastContact } = await supabase
+      .from("contactos_emergencia")
+      .select("*")
+      .eq("id_usuario", patient.id_usuario)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // 6. Armamos el objeto final del reporte
     setReportData({
       patient,
       risk: {
@@ -219,6 +271,9 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
       },
       hazards: patientHazards,
       metrics,
+      contact: lastContact
+        ? { name: lastContact.nombre, phone: lastContact.telefono }
+        : { name: "Sin registrar", phone: "-" },
     });
 
     setShowReport(true);
@@ -242,6 +297,9 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
           "Sesión creada en BD, pero no se pudo conectar con el ESP32. Verifica la IP y el WiFi.",
         );
       }
+      const allSessions = await fetchAllSessionsByUser(selectedPatientId);
+      setPatientSessions(allSessions);
+      setAllSessionIds(allSessions.map((s) => s.id_sesion));
       await loadData();
     } catch (err) {
       alert("Error al iniciar sesión: " + err.message);
@@ -273,112 +331,135 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   // --- ESTILOS LOCALES ---
   const adminStyles = {
     sectionTitle: {
-      fontSize: "18px",
+      fontSize: "17px",
       fontWeight: "700",
-      color: "#111827",
+      color: "#0F172A",
       marginBottom: "16px",
-      borderBottom: "1px solid #E5E7EB",
-      paddingBottom: "8px",
+      borderBottom: "1px solid #E2E8F0",
+      paddingBottom: "10px",
+      letterSpacing: "-0.01em",
     },
     label: {
       display: "block",
-      fontSize: "14px",
+      fontSize: "13.5px",
       fontWeight: "600",
-      color: "#374151",
+      color: "#334155",
       marginBottom: "6px",
     },
     input: {
       width: "100%",
+      minHeight: "44px",
       padding: "10px 12px",
-      fontSize: "14px",
-      borderRadius: "6px",
-      border: "1px solid #D1D5DB",
+      fontSize: "14.5px",
+      borderRadius: "8px",
+      border: "1.5px solid #CBD5E1",
+      backgroundColor: "#FFFFFF",
+      color: "#0F172A",
       marginBottom: "12px",
       boxSizing: "border-box",
     },
     card: {
       backgroundColor: "#FFFFFF",
-      border: "1px solid #E5E7EB",
-      borderRadius: "8px",
-      padding: "20px",
+      border: "1px solid #E2E8F0",
+      borderRadius: "14px",
+      padding: isDesktop ? "22px" : "16px",
       marginBottom: "20px",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+      boxShadow: "0 1px 3px rgba(15, 23, 42, 0.05)",
     },
+  };
+
+  const hasChartData =
+    viewMode === "history"
+      ? allSessionIds.length > 0
+      : Boolean(activeSessionId || graphSessionId);
+
+  const handleChangeViewMode = (mode) => {
+    setViewMode(mode);
+    setSelectedGraphPoint(null);
+    setGraphFilter("all");
   };
 
   return (
     <div style={styles.wrapper}>
       <main style={styles.container}>
-        <Header roleMode="caregiver" onChangeRole={() => {}} />
+        <Header
+          roleMode="caregiver"
+          onChangeRole={() => {}}
+          hideRoleSwitch={true}
+          onLogout={onExit}
+        />
 
-        <div style={{ marginTop: "24px" }}>
-          {/* CABECERA */}
+        <div style={{ marginTop: "8px" }}>
+          {/* CABECERA INVESTIGADOR */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "24px",
+              flexWrap: "wrap",
+              gap: "12px",
+              marginBottom: "20px",
             }}
           >
-            <h2
+            <div>
+              <h2
+                style={{
+                  fontSize: isDesktop ? "22px" : "19px",
+                  fontWeight: "800",
+                  color: "#0F172A",
+                  margin: 0,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Panel de Control e Investigación
+              </h2>
+              <p
+                style={{
+                  fontSize: "13.5px",
+                  color: "#64748B",
+                  margin: "2px 0 0 0",
+                }}
+              >
+                Gestión de participantes, sesiones IoT y análisis de estabilidad
+              </p>
+            </div>
+            <div
               style={{
-                fontSize: "22px",
-                fontWeight: "800",
-                color: "#111827",
-                margin: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                backgroundColor: "#F8FAFC",
+                padding: "7px 12px",
+                borderRadius: "10px",
+                border: "1px solid #E2E8F0",
+                width: isDesktop ? "auto" : "100%",
+                boxSizing: "border-box",
               }}
             >
-              Panel de Control - Admin
-            </h2>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-              <div
+              <label
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  backgroundColor: "#F3F4F6",
-                  padding: "4px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #E5E7EB",
+                  fontSize: "12.5px",
+                  fontWeight: "700",
+                  color: "#475569",
+                  whiteSpace: "nowrap",
                 }}
               >
-                <label
-                  style={{
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    color: "#4B5563",
-                  }}
-                >
-                  IP Sensor:
-                </label>
-                <input
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    fontSize: "13px",
-                    fontWeight: "600",
-                    color: "#0D9488",
-                    width: "110px",
-                    outline: "none",
-                  }}
-                  value={esp32Ip}
-                  onChange={handleIpChange}
-                  placeholder="192.168.1.150"
-                />
-              </div>
-              <Button
-                variant="back"
-                onClick={onExit}
+                IP ESP32:
+              </label>
+              <input
                 style={{
-                  width: "auto",
-                  minHeight: "36px",
-                  padding: "6px 16px",
-                  fontSize: "14px",
+                  border: "none",
+                  background: "transparent",
+                  fontSize: "13.5px",
+                  fontWeight: "700",
+                  color: "#0F766E",
+                  width: isDesktop ? "125px" : "100%",
+                  outline: "none",
                 }}
-              >
-                Salir
-              </Button>
+                value={esp32Ip}
+                onChange={handleIpChange}
+                placeholder="192.168.1.150"
+              />
             </div>
           </div>
 
@@ -570,7 +651,6 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                         </td>
                         <td style={{ padding: "8px 12px" }}>
                           <div style={{ display: "flex", gap: "8px" }}>
-                            {/* BOTONES DE ACCIÓN CORREGIDOS */}
                             <button
                               onClick={() => onStartEvaluation(p.id_usuario)}
                               style={{
@@ -627,9 +707,12 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  flexWrap: "wrap",
+                  gap: "12px",
                   backgroundColor: "#FEF2F2",
+                  border: "1px solid #FECACA",
                   padding: "16px",
-                  borderRadius: "6px",
+                  borderRadius: "10px",
                 }}
               >
                 <div>
@@ -638,7 +721,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                       margin: 0,
                       fontSize: "15px",
                       fontWeight: "700",
-                      color: "#B91C1C",
+                      color: "#991B1B",
                     }}
                   >
                     Sesión en curso
@@ -646,11 +729,11 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   <p
                     style={{
                       margin: "4px 0 0 0",
-                      fontSize: "13px",
+                      fontSize: "13.5px",
                       color: "#7F1D1D",
                     }}
                   >
-                    Transmitiendo desde el sensor en {esp32Ip}.
+                    Transmitiendo telemetría desde el sensor en {esp32Ip}.
                   </p>
                 </div>
                 <Button
@@ -659,9 +742,11 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   disabled={loading}
                   style={{
                     backgroundColor: "#DC2626",
-                    width: "auto",
-                    minHeight: "36px",
-                    padding: "6px 16px",
+                    width: isDesktop ? "auto" : "100%",
+                    minHeight: "42px",
+                    padding: "8px 18px",
+                    fontSize: "14.5px",
+                    margin: 0,
                   }}
                 >
                   Finalizar Prueba
@@ -671,7 +756,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isDesktop ? "2fr 1fr auto" : "1fr",
+                  gridTemplateColumns: isDesktop ? "2fr auto" : "1fr",
                   gap: "12px",
                   alignItems: "end",
                 }}
@@ -697,7 +782,13 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   variant="primary"
                   onClick={handleStart}
                   disabled={loading || !selectedPatientId}
-                  style={{ minHeight: "20px", marginBottom: "12px" }}
+                  style={{
+                    width: isDesktop ? "auto" : "100%",
+                    minHeight: "44px",
+                    fontSize: "15px",
+                    padding: "10px 22px",
+                    margin: "0 0 12px 0",
+                  }}
                 >
                   Iniciar Prueba
                 </Button>
@@ -705,15 +796,20 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
             )}
           </div>
 
-          {/* 3. GRÁFICO EN VIVO */}
+          {/* 3. GRÁFICO DE TELEMETRÍA E HISTÓRICO */}
           <div
             style={{ ...adminStyles.card, padding: "0", overflow: "hidden" }}
           >
             <div
               style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid #E5E7EB",
-                backgroundColor: "#F9FAFB",
+                padding: isDesktop ? "16px 22px" : "14px 16px",
+                borderBottom: "1px solid #E2E8F0",
+                backgroundColor: "#F8FAFC",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
               }}
             >
               <h3
@@ -724,71 +820,217 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                   padding: 0,
                 }}
               >
-                Telemetría en Tiempo Real
+                Análisis de Estabilidad y Telemetría
               </h3>
-            </div>
-            <div
-              style={{
-                padding: "20px",
-                opacity: activeSessionId || graphSessionId ? 1 : 0.4,
-                pointerEvents:
-                  activeSessionId || graphSessionId ? "auto" : "none",
-              }}
-            >
+
               {selectedPatientId && (
                 <div
-                  style={{ display: "flex", gap: "8px", marginBottom: "16px" }}
+                  style={{
+                    display: "inline-flex",
+                    backgroundColor: "#E2E8F0",
+                    padding: "3px",
+                    borderRadius: "10px",
+                    gap: "4px",
+                    width: isDesktop ? "auto" : "100%",
+                  }}
                 >
                   <button
-                    onClick={() => setViewMode("live")}
+                    type="button"
+                    onClick={() => handleChangeViewMode("live")}
                     style={{
+                      flex: isDesktop ? "none" : 1,
                       padding: "8px 16px",
-                      borderRadius: "6px",
+                      minHeight: "38px",
+                      borderRadius: "8px",
                       border: "none",
                       backgroundColor:
-                        viewMode === "live" ? "#0D9488" : "#E5E7EB",
-                      color: viewMode === "live" ? "#fff" : "#374151",
-                      fontWeight: "600",
+                        viewMode === "live" ? "#FFFFFF" : "transparent",
+                      color: viewMode === "live" ? "#0F766E" : "#475569",
+                      fontSize: "13.5px",
+                      fontWeight: "700",
                       cursor: "pointer",
+                      boxShadow:
+                        viewMode === "live"
+                          ? "0 1px 3px rgba(15, 23, 42, 0.1)"
+                          : "none",
                     }}
                   >
                     Última Sesión
                   </button>
                   <button
-                    onClick={() => setViewMode("history")}
+                    type="button"
+                    onClick={() => handleChangeViewMode("history")}
                     style={{
+                      flex: isDesktop ? "none" : 1,
                       padding: "8px 16px",
-                      borderRadius: "6px",
+                      minHeight: "38px",
+                      borderRadius: "8px",
                       border: "none",
                       backgroundColor:
-                        viewMode === "history" ? "#0D9488" : "#E5E7EB",
-                      color: viewMode === "history" ? "#fff" : "#374151",
-                      fontWeight: "600",
+                        viewMode === "history" ? "#FFFFFF" : "transparent",
+                      color: viewMode === "history" ? "#0F766E" : "#475569",
+                      fontSize: "13.5px",
+                      fontWeight: "700",
                       cursor: "pointer",
+                      boxShadow:
+                        viewMode === "history"
+                          ? "0 1px 3px rgba(15, 23, 42, 0.1)"
+                          : "none",
                     }}
                   >
                     Histórico Completo
                   </button>
                 </div>
               )}
+            </div>
+
+            <div
+              style={{
+                padding: isDesktop ? "20px" : "14px",
+                opacity: hasChartData ? 1 : 0.55,
+                pointerEvents: hasChartData ? "auto" : "none",
+              }}
+            >
+              {/* SELECTOR DE SESIÓN (Solo visible en la vista "Última Sesión") */}
+              {selectedPatientId &&
+                viewMode === "live" &&
+                patientSessions.length > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: isDesktop ? "row" : "column",
+                      alignItems: isDesktop ? "center" : "stretch",
+                      gap: "10px",
+                      marginBottom: "16px",
+                      backgroundColor: "#F8FAFC",
+                      padding: "12px 14px",
+                      borderRadius: "10px",
+                      border: "1px solid #E2E8F0",
+                    }}
+                  >
+                    <label
+                      style={{
+                        fontSize: "13.5px",
+                        fontWeight: "700",
+                        color: "#334155",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Sesión visualizada:
+                    </label>
+                    <select
+                      style={{
+                        padding: "9px 12px",
+                        minHeight: "42px",
+                        borderRadius: "8px",
+                        border: "1.5px solid #CBD5E1",
+                        backgroundColor: "#FFFFFF",
+                        color: "#0F172A",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                        width: "100%",
+                        maxWidth: isDesktop ? "420px" : "100%",
+                      }}
+                      value={graphSessionId || activeSessionId || ""}
+                      onChange={(e) => {
+                        setGraphSessionId(e.target.value);
+                        setSelectedGraphPoint(null);
+                      }}
+                    >
+                      {[...patientSessions].reverse().map((s, revIdx) => {
+                        const sessionNum = patientSessions.length - revIdx;
+                        const isLive = s.id_sesion === activeSessionId;
+                        return (
+                          <option key={s.id_sesion} value={s.id_sesion}>
+                            Sesión {sessionNum} —{" "}
+                            {new Date(s.fecha_inicio).toLocaleString("es-CL")}
+                            {isLive ? " (En curso)" : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
 
               <StabilityChart
                 sessionId={
                   viewMode === "history"
                     ? allSessionIds
-                    : activeSessionId || graphSessionId
+                    : graphSessionId || activeSessionId
                 }
-                graphTimeframe={graphTimeframe}
-                setGraphTimeframe={setGraphTimeframe}
+                viewMode={viewMode}
                 graphFilter={graphFilter}
                 setGraphFilter={setGraphFilter}
                 selectedGraphPoint={selectedGraphPoint}
                 setSelectedGraphPoint={setSelectedGraphPoint}
+                hazards={patientHazards}
               />
             </div>
           </div>
 
-          {/* 4. HISTORIAL DE SESIONES */}
+          {/* 4. RECOMENDACIONES */}
+          {viewMode === "history" && patientRecommendations.length > 0 && (
+            <div style={adminStyles.card}>
+              <h3 style={adminStyles.sectionTitle}>Plan de Acción Generado</h3>
+              <p
+                style={{
+                  fontSize: "14px",
+                  color: "#4B5563",
+                  marginBottom: "16px",
+                }}
+              >
+                Estas son las adaptaciones recomendadas para el hogar del
+                participante según sus evaluaciones:
+              </p>
+              <ul style={{ listStyle: "none", padding: 0 }}>
+                {patientRecommendations.map((r) => (
+                  <li
+                    key={r.id_recomendacion}
+                    style={{
+                      padding: "12px",
+                      borderBottom: "1px solid #E5E7EB",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <strong
+                        style={{
+                          color: "#0D9488",
+                          fontSize: "12px",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {r.tipo_recomendacion}
+                      </strong>
+                      <p style={{ margin: "4px 0 0 0", fontSize: "14px" }}>
+                        {r.descripcion}
+                      </p>
+                    </div>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={r.estado_aplicada}
+                        readOnly
+                      />
+                      Aplicada
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 5. HISTORIAL DE SESIONES */}
           <div style={adminStyles.card}>
             <h3 style={adminStyles.sectionTitle}>Historial de Pruebas</h3>
             <div style={{ overflowX: "auto" }}>
@@ -864,7 +1106,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
             </div>
           </div>
 
-          {/* 5. MODAL DE REPORTE */}
+          {/* 6. MODAL DE REPORTE */}
           {showReport && (
             <PrintModal
               show={showReport}
@@ -872,7 +1114,7 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
               patient={reportData.patient}
               risk={reportData.risk}
               hazards={reportData.hazards}
-              contact={{ name: "Red de Apoyo", phone: "-" }}
+              contact={reportData.contact}
               metrics={reportData.metrics}
             />
           )}

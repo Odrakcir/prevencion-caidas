@@ -6,7 +6,6 @@ import RiskBadge from "../components/common/RiskBadge";
 import StabilityChart from "../components/dashboard/StabilityChart";
 import SensorCard from "../components/dashboard/SensorCard";
 import PrintModal from "../components/dashboard/PrintModal";
-import { HOURLY_DATA, WEEKLY_DATA } from "../constants/surveyData";
 import { useState } from "react";
 
 export default function DashboardView({
@@ -15,6 +14,8 @@ export default function DashboardView({
   selectedHazardsCount,
   contact,
   hazards,
+  userProfile,
+  userContext,
   onReset,
 }) {
   const isDesktop = useIsDesktop();
@@ -23,20 +24,55 @@ export default function DashboardView({
 
   const [graphTimeframe, setGraphTimeframe] = useState("today");
   const [graphFilter, setGraphFilter] = useState("all");
-  const [selectedGraphPoint, setSelectedGraphPoint] = useState(
-    HOURLY_DATA[HOURLY_DATA.length - 1],
-  );
+  const [selectedGraphPoint, setSelectedGraphPoint] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Si el usuario tiene sesiones reales en Supabase, las conectamos al gráfico
+  const activeChartSessionId =
+    graphTimeframe === "weekly"
+      ? userContext?.allSessionIds?.length > 0
+        ? userContext.allSessionIds
+        : null
+      : userContext?.latestSessionId || null;
+
+  // Combinamos los peligros marcados en la encuesta actual con el último registro guardado en Supabase
+  const hasCurrentSurveyHazards = selectedHazardsCount > 0;
+  const saved = userContext?.savedHazards;
+  const mappedHazards = hasCurrentSurveyHazards
+    ? {
+        iluminacion_deficiente: Boolean(hazards?.C1 || hazards?.E3),
+        alfombras_sueltas: Boolean(hazards?.A1 || hazards?.B3),
+        ausencia_barras: Boolean(hazards?.D1 || hazards?.D2),
+        obstaculos_ruta: Boolean(hazards?.A2 || hazards?.E1 || hazards?.E2),
+      }
+    : {
+        iluminacion_deficiente: Boolean(saved?.iluminacion_deficiente),
+        alfombras_sueltas: Boolean(saved?.alfombras_sueltas),
+        ausencia_barras: Boolean(saved?.ausencia_barras),
+        obstaculos_ruta: Boolean(saved?.obstaculos_ruta),
+      };
+
+  const hasAnyMappedHazard =
+    mappedHazards.alfombras_sueltas ||
+    mappedHazards.iluminacion_deficiente ||
+    mappedHazards.ausencia_barras ||
+    mappedHazards.obstaculos_ruta;
+
+  const fullName = userProfile
+    ? `${userProfile.nombres} ${userProfile.apellidos}`.trim()
+    : "Participante Registrado";
 
   return (
     <section>
       <StabilityChart
+        sessionId={activeChartSessionId}
         graphTimeframe={graphTimeframe}
         setGraphTimeframe={setGraphTimeframe}
         graphFilter={graphFilter}
         setGraphFilter={setGraphFilter}
         selectedGraphPoint={selectedGraphPoint}
         setSelectedGraphPoint={setSelectedGraphPoint}
+        hazards={mappedHazards}
       />
 
       <div style={isDesktop ? styles.desktopGrid : {}}>
@@ -44,12 +80,17 @@ export default function DashboardView({
         <div>
           <div style={styles.card}>
             <h3 style={styles.cardTitle}>
-              <span style={styles.statusDot("#0D9488")} />
+              <span style={styles.statusDot("#0F766E")} />
               Perfil del Usuario y Red de Apoyo
             </h3>
             <p style={{ margin: "6px 0", fontSize: "16px" }}>
-              <strong>Usuario:</strong> Adulto Mayor Registrado
+              <strong>Usuario:</strong> {fullName}
             </p>
+            {userProfile?.rut && (
+              <p style={{ margin: "6px 0", fontSize: "15.5px", color: "#475569" }}>
+                <strong>RUT:</strong> {userProfile.rut}
+              </p>
+            )}
             <p style={{ margin: "6px 0", fontSize: "16px" }}>
               <strong>Contacto Familiar:</strong>{" "}
               {contact.name || "Sin registrar"}
@@ -180,31 +221,31 @@ export default function DashboardView({
                 margin: 0,
               }}
             >
-              {hazards.rugs && (
+              {mappedHazards.alfombras_sueltas && (
                 <li style={{ marginBottom: "8px" }}>
                   <strong>Alfombras:</strong> Fijar o retirar alfombras sueltas
                   en zonas de tránsito.
                 </li>
               )}
-              {hazards.lighting && (
+              {mappedHazards.iluminacion_deficiente && (
                 <li style={{ marginBottom: "8px" }}>
                   <strong>Iluminación:</strong> Instalar luces automáticas
                   nocturnas en pasillos.
                 </li>
               )}
-              {hazards.bars && (
+              {mappedHazards.ausencia_barras && (
                 <li style={{ marginBottom: "8px" }}>
                   <strong>Sujeciones:</strong> Instalar barras firmes en WC y
                   ducha.
                 </li>
               )}
-              {hazards.obstacles && (
+              {mappedHazards.obstaculos_ruta && (
                 <li style={{ marginBottom: "8px" }}>
                   <strong>Rutas Libres:</strong> Mantener suelos despejados de
                   cables y objetos.
                 </li>
               )}
-              {selectedHazardsCount === 0 && (
+              {!hasAnyMappedHazard && (
                 <li style={{ marginBottom: "8px" }}>
                   Espacios del hogar ordenados y libres de obstáculos
                   identificados.
@@ -259,10 +300,11 @@ export default function DashboardView({
       <PrintModal
         show={showPrintModal}
         onClose={() => setShowPrintModal(false)}
+        patient={userProfile}
         risk={risk}
-        morseScore={morseScore}
-        selectedHazardsCount={selectedHazardsCount}
+        hazards={hazards}
         contact={contact}
+        metrics={null}
       />
     </section>
   );

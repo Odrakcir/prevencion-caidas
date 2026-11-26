@@ -13,6 +13,7 @@ export default function SurveyModule({
   survey,
   isAdminMode = false,
   onAdminSave,
+  onUserComplete,
 }) {
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
@@ -30,6 +31,7 @@ export default function SurveyModule({
   };
 
   const [currentRoomIndex, setCurrentRoomIndex] = useState(0);
+  const [highlightedHazardId, setHighlightedHazardId] = useState(null);
   const ROOMS = ["Sala", "Cocina", "Dormitorio", "Baño", "Pasillos"];
   const currentZone = ROOMS[currentRoomIndex];
 
@@ -168,7 +170,7 @@ export default function SurveyModule({
               textTransform: "uppercase",
             }}
           >
-            Evaluación Médica — Pregunta {currentQuestion + 1} de{" "}
+            Evaluación Preventiva — Pregunta {currentQuestion + 1} de{" "}
             {QUESTIONS.length}
           </span>
           <p
@@ -203,121 +205,367 @@ export default function SurveyModule({
     );
   }
 
-  // 4. PANTALLA: PELIGROS AMBIENTALES (FLUJO LINEAL)
+  // 4. PANTALLA: PELIGROS AMBIENTALES (FLUJO GUIADO CON PLANO INTERACTIVO)
   if (screen === "hazards") {
     const zoneHazards = ENVIRONMENTAL_HAZARDS.filter(
       (h) => h.zone === currentZone,
     );
     const isLastRoom = currentRoomIndex === ROOMS.length - 1;
+    const markedInRoom = zoneHazards.filter((h) => hazards[h.id]).length;
+    const totalMarked = ENVIRONMENTAL_HAZARDS.filter((h) => hazards[h.id]).length;
 
     return (
-      <section style={{ maxWidth: "800px", margin: "0 auto" }}>
-        {/* INDICADOR DE PROGRESO DE HABITACIONES */}
-        <div style={{ textAlign: "center", marginBottom: "20px" }}>
-          <span
-            style={{
-              fontSize: "14px",
-              fontWeight: "800",
-              color: "#0D9488",
-              textTransform: "uppercase",
-            }}
-          >
-            Habitación {currentRoomIndex + 1} de {ROOMS.length}
-          </span>
+      <section style={{ maxWidth: "960px", margin: "0 auto" }}>
+        {/* NAVEGADOR DE HABITACIONES (Progreso claro + acceso directo) */}
+        <div style={{ marginBottom: "18px" }}>
           <div
             style={{
               display: "flex",
-              justifyContent: "center",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
               gap: "8px",
-              marginTop: "8px",
+              marginBottom: "10px",
             }}
           >
-            {ROOMS.map((_, idx) => (
-              <div
-                key={idx}
-                style={{
-                  width: "40px",
-                  height: "6px",
-                  borderRadius: "3px",
-                  backgroundColor:
-                    idx <= currentRoomIndex ? "#0D9488" : "#E5E7EB",
-                  transition: "all 0.3s",
-                }}
-              />
-            ))}
+            <span
+              style={{
+                fontSize: "14px",
+                fontWeight: "800",
+                color: "#0F766E",
+                textTransform: "uppercase",
+                letterSpacing: "0.03em",
+              }}
+            >
+              Paso {currentRoomIndex + 1} de {ROOMS.length} — Revisión del Hogar
+            </span>
+            <span
+              style={{
+                fontSize: "13.5px",
+                fontWeight: "700",
+                color: totalMarked > 0 ? "#991B1B" : "#115E59",
+                backgroundColor: totalMarked > 0 ? "#FEF2F2" : "#F0FDFA",
+                border: `1px solid ${totalMarked > 0 ? "#FECACA" : "#99F6E4"}`,
+                padding: "4px 12px",
+                borderRadius: "999px",
+              }}
+            >
+              {totalMarked === 0
+                ? "Sin peligros marcados aún"
+                : `${totalMarked} ${totalMarked === 1 ? "peligro marcado" : "peligros marcados"} en total`}
+            </span>
+          </div>
+
+          <div
+            role="tablist"
+            aria-label="Habitaciones del hogar"
+            style={{
+              display: "grid",
+              gridTemplateColumns: isDesktop
+                ? "repeat(5, 1fr)"
+                : "repeat(auto-fit, minmax(96px, 1fr))",
+              gap: "8px",
+            }}
+          >
+            {ROOMS.map((room, idx) => {
+              const roomCount = ENVIRONMENTAL_HAZARDS.filter(
+                (h) => h.zone === room && hazards[h.id],
+              ).length;
+              const isCurrent = idx === currentRoomIndex;
+              const isVisited = idx < currentRoomIndex;
+
+              return (
+                <button
+                  key={room}
+                  type="button"
+                  role="tab"
+                  aria-selected={isCurrent}
+                  onClick={() => {
+                    setCurrentRoomIndex(idx);
+                    setHighlightedHazardId(null);
+                  }}
+                  style={{
+                    minHeight: "44px",
+                    padding: "8px 10px",
+                    borderRadius: "10px",
+                    border: isCurrent
+                      ? "2px solid #0F766E"
+                      : "1.5px solid #CBD5E1",
+                    backgroundColor: isCurrent
+                      ? "#0F766E"
+                      : isVisited
+                        ? "#F0FDFA"
+                        : "#FFFFFF",
+                    color: isCurrent ? "#FFFFFF" : "#1E293B",
+                    fontSize: "14px",
+                    fontWeight: "700",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span>{room}</span>
+                  {roomCount > 0 && (
+                    <span
+                      style={{
+                        backgroundColor: isCurrent ? "#FFFFFF" : "#DC2626",
+                        color: isCurrent ? "#0F766E" : "#FFFFFF",
+                        fontSize: "11.5px",
+                        fontWeight: "800",
+                        minWidth: "20px",
+                        height: "20px",
+                        borderRadius: "999px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "0 5px",
+                      }}
+                    >
+                      {roomCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div style={styles.card}>
-          <h2
+        {/* TARJETA PRINCIPAL DE LA HABITACIÓN */}
+        <div
+          style={{
+            ...styles.featuredCard,
+            padding: isDesktop ? "26px" : "16px",
+          }}
+        >
+          <div
             style={{
-              fontSize: "24px",
-              fontWeight: "800",
-              color: "#111827",
-              marginBottom: "8px",
-              textAlign: "center",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: isDesktop ? "center" : "flex-start",
+              flexDirection: isDesktop ? "row" : "column",
+              gap: "8px",
+              marginBottom: "18px",
+              paddingBottom: "14px",
+              borderBottom: "1px solid #E2E8F0",
             }}
           >
-            Revisemos: {currentZone}
-          </h2>
-          <p
-            style={{
-              ...styles.text,
-              textAlign: "center",
-              marginBottom: "20px",
-            }}
-          >
-            Marca lo que veas en esta habitación.
-          </p>
+            <div>
+              <h2
+                style={{
+                  fontSize: isDesktop ? "24px" : "21px",
+                  fontWeight: "800",
+                  color: "#0F172A",
+                  margin: "0 0 4px 0",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Revisemos: {currentZone}
+              </h2>
+              <p
+                style={{
+                  fontSize: "16px",
+                  color: "#334155",
+                  margin: 0,
+                  lineHeight: "1.5",
+                }}
+              >
+                Marca cada situación que veas en tu{" "}
+                <strong>{currentZone.toLowerCase()}</strong>. Los números{" "}
+                <strong>1, 2 y 3</strong> coinciden con el dibujo.
+              </p>
+            </div>
+
+            <span
+              style={{
+                fontSize: "13.5px",
+                fontWeight: "700",
+                color: markedInRoom > 0 ? "#991B1B" : "#334155",
+                backgroundColor: markedInRoom > 0 ? "#FEF2F2" : "#F1F5F9",
+                border: `1px solid ${markedInRoom > 0 ? "#FECACA" : "#CBD5E1"}`,
+                padding: "6px 12px",
+                borderRadius: "8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {markedInRoom} de {zoneHazards.length} marcados aquí
+            </span>
+          </div>
 
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
-              gap: "20px",
-              alignItems: "center",
+              gridTemplateColumns: isDesktop ? "1.05fr 1.15fr" : "1fr",
+              gap: isDesktop ? "24px" : "18px",
+              alignItems: "start",
             }}
           >
-            {/* Checkboxes de la habitación actual */}
-            <div>
-              {zoneHazards.map((h) => (
-                <div
-                  key={h.id}
-                  style={{
-                    ...styles.checkboxContainer,
-                    borderColor: hazards[h.id] ? "#0D9488" : "#E5E7EB",
-                    backgroundColor: hazards[h.id] ? "#F0FDFA" : "#FFFFFF",
-                    marginBottom: "12px",
-                    padding: "16px", // Más grande para el adulto mayor
-                  }}
-                  onClick={() => toggleHazard(h.id)}
-                >
-                  <input
-                    type="checkbox"
-                    style={{
-                      ...styles.checkboxInput,
-                      width: "28px",
-                      height: "28px",
-                    }} // Checkbox más grande
-                    checked={hazards[h.id]}
-                    onChange={() => {}}
-                  />
-                  <span
-                    style={{
-                      ...styles.checkboxText,
-                      fontSize: "18px",
-                      lineHeight: "1.4",
-                    }}
-                  >
-                    {h.label}
-                  </span>
-                </div>
-              ))}
+            {/* En móvil mostramos primero la guía visual; en PC a la derecha */}
+            <div style={{ order: isDesktop ? 2 : 1 }}>
+              <RoomFloorPlan
+                zone={currentZone}
+                hazards={hazards}
+                onToggleHazard={toggleHazard}
+                highlightedId={highlightedHazardId}
+              />
             </div>
 
-            {/* Plano Interactivo Grande */}
-            <div>
-              <RoomFloorPlan zone={currentZone} hazards={hazards} />
+            {/* Checklist accesible numerada */}
+            <div
+              style={{
+                order: isDesktop ? 1 : 2,
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+              }}
+            >
+              {zoneHazards.map((h, idx) => {
+                const checked = Boolean(hazards[h.id]);
+                const num = idx + 1;
+
+                return (
+                  <button
+                    key={h.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={checked}
+                    onClick={() => toggleHazard(h.id)}
+                    onMouseEnter={() => setHighlightedHazardId(h.id)}
+                    onMouseLeave={() => setHighlightedHazardId(null)}
+                    onFocus={() => setHighlightedHazardId(h.id)}
+                    onBlur={() => setHighlightedHazardId(null)}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "14px",
+                      padding: isDesktop ? "16px" : "14px",
+                      minHeight: "76px",
+                      borderRadius: "12px",
+                      border: checked
+                        ? "2px solid #DC2626"
+                        : highlightedHazardId === h.id
+                          ? "2px solid #0F766E"
+                          : "1.5px solid #CBD5E1",
+                      backgroundColor: checked ? "#FEF2F2" : "#FFFFFF",
+                      cursor: "pointer",
+                      boxSizing: "border-box",
+                      boxShadow: checked
+                        ? "0 2px 6px rgba(220, 38, 38, 0.1)"
+                        : "0 1px 2px rgba(15, 23, 42, 0.04)",
+                      transition: "all 0.15s ease",
+                      userSelect: "none",
+                    }}
+                  >
+                    {/* Insignia numérica sincronizada con el dibujo */}
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "34px",
+                        height: "34px",
+                        borderRadius: "50%",
+                        backgroundColor: checked ? "#DC2626" : "#0F766E",
+                        color: "#FFFFFF",
+                        fontSize: "16px",
+                        fontWeight: "800",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        marginTop: "2px",
+                      }}
+                    >
+                      {num}
+                    </span>
+
+                    {/* Título y explicación cotidiana */}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: "17px",
+                          fontWeight: "700",
+                          color: "#0F172A",
+                          lineHeight: "1.35",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {h.label}
+                      </span>
+                      {h.hint && (
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: "14.5px",
+                            fontWeight: "500",
+                            color: "#475569",
+                            lineHeight: "1.45",
+                          }}
+                        >
+                          {h.hint}
+                        </span>
+                      )}
+                    </span>
+
+                    {/* Indicador visual explícito de estado (no solo color) */}
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: "4px",
+                        flexShrink: 0,
+                        marginTop: "2px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "7px",
+                          border: checked
+                            ? "2px solid #DC2626"
+                            : "2px solid #64748B",
+                          backgroundColor: checked ? "#DC2626" : "#FFFFFF",
+                          color: "#FFFFFF",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "16px",
+                          fontWeight: "800",
+                        }}
+                      >
+                        {checked ? "✓" : ""}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: "700",
+                          color: checked ? "#991B1B" : "#475569",
+                        }}
+                      >
+                        {checked ? "Sí hay" : "No"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+
+              <p
+                style={{
+                  margin: "4px 0 0 0",
+                  fontSize: "14px",
+                  color: "#475569",
+                  lineHeight: "1.45",
+                }}
+              >
+                Si en tu {currentZone.toLowerCase()} no hay ninguno de estos
+                peligros, simplemente avanza a la siguiente habitación.
+              </p>
             </div>
           </div>
         </div>
@@ -325,57 +573,72 @@ export default function SurveyModule({
         {/* BOTONES DE NAVEGACIÓN */}
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
+            display: "grid",
+            gridTemplateColumns:
+              !isAdminMode && isDesktop ? "1fr 2fr" : "1fr",
             gap: "12px",
-            marginTop: "20px",
+            marginTop: "16px",
           }}
         >
-          {isLastRoom ? (
-            // Si es la última habitación, mostramos el botón de terminar
+          {!isAdminMode && (
             <Button
-              variant="primary"
-              style={{ minHeight: "60px", fontSize: "20px" }} // Botón gigante
+              variant="back"
+              style={{
+                minHeight: "56px",
+                fontSize: "17px",
+                order: isDesktop ? 1 : 2,
+              }}
               onClick={() => {
-                if (isAdminMode && onAdminSave) onAdminSave();
-                else setScreen("dashboard");
+                setHighlightedHazardId(null);
+                if (currentRoomIndex > 0) {
+                  setCurrentRoomIndex((prev) => prev - 1);
+                } else {
+                  setScreen("questionnaire");
+                }
+                window.scrollTo(0, 0);
               }}
             >
-              {isAdminMode ? "Guardar y Volver al Panel" : "Ver Mis Resultados"}
-            </Button>
-          ) : (
-            // Si no es la última, mostramos el botón de Siguiente
-            <Button
-              variant="primary"
-              style={{ minHeight: "60px", fontSize: "20px" }} // Botón gigante
-              onClick={() => {
-                setCurrentRoomIndex((prev) => prev + 1);
-                window.scrollTo(0, 0); // Hacemos scroll al principio de la página
-              }}
-            >
-              Siguiente Habitación →
+              {currentRoomIndex > 0
+                ? `← Volver a ${ROOMS[currentRoomIndex - 1]}`
+                : "← Volver a Preguntas"}
             </Button>
           )}
 
-          {/* Botón para volver atrás (opcional, pero útil) */}
-          <div style={{ display: "flex", gap: "12px" }}>
-            {!isAdminMode && (
-              <Button
-                variant="back"
-                style={{ flex: 1, minHeight: "50px" }}
-                onClick={() => {
-                  if (currentRoomIndex > 0) {
-                    setCurrentRoomIndex((prev) => prev - 1);
-                  } else {
-                    setScreen("questionnaire"); // Si está en la primera, vuelve a la encuesta clínica
-                  }
-                  window.scrollTo(0, 0);
-                }}
-              >
-                Atrás
-              </Button>
-            )}
-          </div>
+          {isLastRoom ? (
+            <Button
+              variant="primary"
+              style={{
+                minHeight: "58px",
+                fontSize: "19px",
+                order: isDesktop ? 2 : 1,
+              }}
+              onClick={() => {
+                if (isAdminMode && onAdminSave) onAdminSave();
+                else if (onUserComplete) onUserComplete();
+                else setScreen("dashboard");
+              }}
+            >
+              {isAdminMode
+                ? "Guardar y Volver al Panel"
+                : "Finalizar y Ver Mis Resultados"}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              style={{
+                minHeight: "58px",
+                fontSize: "19px",
+                order: isDesktop ? 2 : 1,
+              }}
+              onClick={() => {
+                setHighlightedHazardId(null);
+                setCurrentRoomIndex((prev) => prev + 1);
+                window.scrollTo(0, 0);
+              }}
+            >
+              Siguiente: {ROOMS[currentRoomIndex + 1]} →
+            </Button>
+          )}
         </div>
       </section>
     );

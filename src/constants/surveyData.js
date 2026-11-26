@@ -183,30 +183,101 @@ export const QUESTIONS = [
   },
 ];
 
-// Los 15 peligros ambientales divididos por zonas
+// Los 15 peligros ambientales divididos por zonas (con ayuda visual en lenguaje cotidiano)
 export const ENVIRONMENTAL_HAZARDS = [
   // Sala
-  { id: "A1", label: "Alfombras sueltas no fijadas", zone: "Sala" },
-  { id: "A2", label: "Cables u obstáculos en el paso", zone: "Sala" },
-  { id: "A3", label: "Sillones demasiado bajos o blandos", zone: "Sala" },
+  {
+    id: "A1",
+    label: "Alfombras sueltas o con puntas levantadas",
+    hint: "Se mueven al pisar o tienen bordes doblados donde el pie puede engancharse.",
+    zone: "Sala",
+  },
+  {
+    id: "A2",
+    label: "Cables u objetos en el paso",
+    hint: "Alargadores, cables de lámparas, revistas o muebles que estorban al caminar.",
+    zone: "Sala",
+  },
+  {
+    id: "A3",
+    label: "Sillones demasiado bajos o blandos",
+    hint: "Cuesta esfuerzo incorporarse o debe impulsarse varias veces para ponerse de pie.",
+    zone: "Sala",
+  },
   // Cocina
-  { id: "B1", label: "Pisos resbaladizos (grasa/agua)", zone: "Cocina" },
-  { id: "B2", label: "Almacenamiento en altura (estirarse)", zone: "Cocina" },
-  { id: "B3", label: "Alfombrillas que se doblan", zone: "Cocina" },
+  {
+    id: "B1",
+    label: "Pisos resbaladizos por agua o grasa",
+    hint: "Zonas húmedas cerca del lavaplatos o piso muy liso al caminar.",
+    zone: "Cocina",
+  },
+  {
+    id: "B2",
+    label: "Cosas de uso diario en muebles altos",
+    hint: "Debe estirarse mucho, empinarse o subirse a un piso para alcanzar platos u ollas.",
+    zone: "Cocina",
+  },
+  {
+    id: "B3",
+    label: "Alfombrillas o paños que se doblan",
+    hint: "Secapiés o tapetes sueltos frente al mesón que resbalan o se arrugan.",
+    zone: "Cocina",
+  },
   // Dormitorio
-  { id: "C1", label: "Falta de luz nocturna", zone: "Dormitorio" },
-  { id: "C2", label: "Cama muy alta o muy baja", zone: "Dormitorio" },
+  {
+    id: "C1",
+    label: "Falta de luz nocturna al levantarse",
+    hint: "El interruptor queda lejos de la cama o el camino al baño está oscuro de noche.",
+    zone: "Dormitorio",
+  },
+  {
+    id: "C2",
+    label: "Cama demasiado alta o demasiado baja",
+    hint: "Al sentarse en el borde, los pies cuelgan o las rodillas quedan muy arriba.",
+    zone: "Dormitorio",
+  },
   {
     id: "C3",
-    label: "Usa pantuflas sin talón o va descalzo",
+    label: "Pantuflas sin talón o caminar descalzo",
+    hint: "Calzado abierto atrás, suelto o calcetines lisos sin goma antideslizante.",
     zone: "Dormitorio",
   },
   // Baño
-  { id: "D1", label: "Falta de barras de sujeción (ducha/WC)", zone: "Baño" },
-  { id: "D2", label: "Ducha sin goma antideslizante", zone: "Baño" },
-  { id: "D3", label: "Borde de tina alto o difícil de pasar", zone: "Baño" },
+  {
+    id: "D1",
+    label: "Falta de barras de sujeción (ducha o WC)",
+    hint: "No hay manillas firmes en la pared para afirmarse al ducharse o levantarse.",
+    zone: "Baño",
+  },
+  {
+    id: "D2",
+    label: "Ducha o tina sin goma antideslizante",
+    hint: "Superficie lisa y jabonosa al pisar dentro de la ducha.",
+    zone: "Baño",
+  },
+  {
+    id: "D3",
+    label: "Borde de tina alto o difícil de pasar",
+    hint: "Debe levantar mucho la pierna para entrar o salir de la tina.",
+    zone: "Baño",
+  },
   // Pasillos
-  { id: "E1", label: "Desniveles o gradas sin señalizar", zone: "Pasillos" },
-  { id: "E2", label: "Escaleras sin pasamanos firmes", zone: "Pasillos" },
-  { id: "E3", label: "Iluminación general muy tenue", zone: "Pasillos" },
+  {
+    id: "E1",
+    label: "Desniveles o peldaños sin señalizar",
+    hint: "Cambios de altura en el piso o umbrales difíciles de notar a simple vista.",
+    zone: "Pasillos",
+  },
+  {
+    id: "E2",
+    label: "Escaleras sin pasamanos firme",
+    hint: "Falta baranda segura para apoyarse al subir o bajar.",
+    zone: "Pasillos",
+  },
+  {
+    id: "E3",
+    label: "Pasillos con luz tenue o sombras",
+    hint: "Ampolletas bajas o sectores oscuros donde cuesta distinguir el suelo.",
+    zone: "Pasillos",
+  },
 ];
