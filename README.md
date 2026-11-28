@@ -11,6 +11,7 @@ El sistema combina la evaluación preventiva de factores físicos y del entorno 
 ## Tabla de Contenidos
 
 - [Características Principales](#características-principales)
+- [Requisitos PWA: Instalabilidad y Modo Offline-First](#requisitos-pwa-instalabilidad-y-modo-offline-first)
 - [Accesibilidad Gerontológica (WCAG 2.1 AA) y Modelo TAM](#accesibilidad-gerontológica-wcag-21-aa-y-modelo-tam)
 - [Arquitectura del Sistema](#arquitectura-del-sistema)
 - [Integración Hardware IoT (ESP32)](#integración-hardware-iot-esp32)
@@ -49,6 +50,34 @@ El sistema combina la evaluación preventiva de factores físicos y del entorno 
 
 ---
 
+## Requisitos PWA: Instalabilidad y Modo Offline-First
+
+Para garantizar su operación real en domicilios con señal inestable y cumplir los criterios formales de una **Aplicación Web Progresiva (PWA)** certificable (Lighthouse / W3C), el proyecto integra **`vite-plugin-pwa` v2 (Workbox)** junto con una capa de persistencia local y sincronización diferida:
+
+### 1. Manifiesto Web e Instalabilidad (`manifest.webmanifest`)
+- **Identidad y pantalla completa:** Configurado con `name: "Hogar Seguro — Prevención de Caídas"`, `short_name: "Hogar Seguro"`, `display: "standalone"`, `start_url: "/"`, `theme_color: "#0F766E"`, `background_color: "#F1F5F9"` y `lang: "es-CL"`.
+- **Íconos adaptativos y multiplataforma:**
+  - `192×192` y `512×512` (`purpose: "any"`) para pantalla de inicio y splash screen.
+  - `192×192` y `512×512` (`purpose: "maskable"`) con zona segura para íconos adaptativos en Android.
+  - `apple-touch-icon.png` (`180×180`), `favicon.svg` y metadatos `apple-mobile-web-app-*` para instalación en iOS Safari sin barra de navegación.
+- **Invitación accesible (`usePwaStatus` + `PwaStatusBanner`):** Captura el evento `beforeinstallprompt` para ofrecer el botón **"Instalar App"** (y guía contextual en iOS Safari) siguiendo contraste y tamaños táctiles WCAG 2.1 AA.
+
+### 2. Service Worker y Estrategia de Caché (Workbox)
+Generado automáticamente en producción (`dist/sw.js`, `registerType: "autoUpdate"`):
+
+| Recurso / Ruta | Estrategia | Propósito |
+| :--- | :--- | :--- |
+| **App Shell** (`index.html`, JS, CSS, planos arquitectónicos SVG, íconos y manifiesto) | **Precache** (`precacheAndRoute`) + `NavigationRoute` | Permite abrir y navegar la encuesta, el plano interactivo del hogar y las recomendaciones con `0%` de señal. |
+| **Imágenes, estilos y fuentes estáticas** | **CacheFirst** (`hogar-seguro-static-v1`, 30 días) | Carga inmediata y ahorro de datos móviles. |
+| **Lecturas `GET` de Supabase** (`/rest/v1/*`) | **NetworkFirst** (`hogar-seguro-supabase-read-v1`, timeout `4s`) | Prioriza datos actualizados y recurre al respaldo en caché si se pierde conexión (sin cachear mutaciones ni auth). |
+
+### 3. Resiliencia *Offline-First* y Sincronización Diferida (`offlineStorage.js`)
+- **Arranque tolerante a desconexión:** Almacena en caché local el perfil y último contexto del participante para evitar bloqueos en pantalla de carga si se abre la app sin internet.
+- **Borrador persistente:** Guarda automáticamente las respuestas de la Escala de Morse, los peligros marcados en el plano SVG y el contacto de apoyo.
+- **Cola de sincronización diferida:** Si el adulto mayor o evaluador finaliza una evaluación o guarda su avance de recomendaciones sin conexión, los registros quedan resguardados en el dispositivo y se envían automáticamente a Supabase al recuperar señal (`window` `online`) o mediante el botón **"Sincronizar ahora"**.
+
+---
+
 ## Accesibilidad Gerontológica (WCAG 2.1 AA) y Modelo TAM
 
 El diseño de la interfaz sigue pautas de accesibilidad web (**WCAG 2.1 AA**, alcanzando contraste **AAA** en lectura principal) y los principios del **Modelo de Aceptación Tecnológica (TAM)** de Davis:
@@ -67,18 +96,19 @@ El diseño de la interfaz sigue pautas de accesibilidad web (**WCAG 2.1 AA**, al
 ## Arquitectura del Sistema
 
 ```text
-┌───────────────────────────┐        HTTP POST (/start, /stop)        ┌──────────────────────────┐
-│     PWA Hogar Seguro      │ ──────────────────────────────────────► │   Microcontrolador IoT   │
-│  React 19 + Vite (SVG)    │                                         │ ESP32 + MPU6050 + FSR406 │
-└─────────────┬─────────────┘                                         └────────────┬─────────────┘
-              │                                                                    │
-              │ Supabase JS (Auth, REST, Realtime WebSocket)                       │ POST ventanas (~5s)
-              ▼                                                                    ▼
-┌───────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   Supabase (PostgreSQL)                                       │
-│   Auth · usuarios · sesiones_prueba · eventos_telemetria · evaluaciones_mfs                   │
-│   peligros_ambientales · recomendaciones · contactos_emergencia · dispositivos_iot            │
-└───────────────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────┐        HTTP POST (/start, /stop)        ┌──────────────────────────┐
+│        PWA Hogar Seguro        │ ──────────────────────────────────────► │   Microcontrolador IoT   │
+│ React 19 + Vite 8 + Workbox SW │                                         │ ESP32 + MPU6050 + FSR406 │
+│  (Offline-First + Planos SVG)  │                                         └────────────┬─────────────┘
+└───────────────┬────────────────┘                                                      │
+                │                                                                       │
+                │ Supabase JS (Auth, REST, Realtime WebSocket) + Cola Offline           │ POST ventanas (~5s)
+                ▼                                                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                      Supabase (PostgreSQL)                                          │
+│   Auth · usuarios · sesiones_prueba · eventos_telemetria · evaluaciones_mfs                         │
+│   peligros_ambientales · recomendaciones · contactos_emergencia · dispositivos_iot                  │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -211,7 +241,7 @@ La aplicación consume 8 tablas relacionales en el esquema `public` de PostgreSQ
 
 ## Tecnologías Utilizadas
 
-- **Frontend:** React 19, Vite 8, SVG puro (gráficos interactivos y planos de habitaciones sin librerías externas de charting), CSS modular y estilos responsivos.
+- **Frontend y PWA:** React 19, Vite 8, **`vite-plugin-pwa` v2 (Workbox)** para Service Worker y Web App Manifest (`standalone`), persistencia local *Offline-First*, SVG puro (gráficos interactivos y planos de habitaciones sin librerías externas de charting), CSS modular y estilos responsivos.
 - **Backend / BaaS:** Supabase (`@supabase/supabase-js` v2 — Auth, PostgreSQL, Paginación y Realtime).
 - **Hardware IoT:** ESP32, sensor inercial MPU6050 (aceleración 3 ejes) y sensor de fuerza plantar FSR406.
 
@@ -222,12 +252,20 @@ La aplicación consume 8 tablas relacionales en el esquema `public` de PostgreSQ
 ```text
 pwa-prevencion-caidas/
 ├── public/
+│   ├── icons/
+│   │   ├── apple-touch-icon.png              # Ícono 180×180 para pantalla de inicio iOS
+│   │   ├── pwa-192x192.png                   # Ícono PWA estándar 192×192
+│   │   ├── pwa-512x512.png                   # Ícono PWA estándar 512×512
+│   │   ├── pwa-maskable-192x192.png          # Ícono adaptativo (maskable) 192×192
+│   │   └── pwa-maskable-512x512.png          # Ícono adaptativo (maskable) 512×512
+│   ├── favicon.svg                           # Ícono vectorial de marca Hogar Seguro
 │   └── logo-utem.png                         # Logotipo institucional para reportes PDF
 ├── src/
 │   ├── components/
 │   │   ├── common/
 │   │   │   ├── Button.jsx                    # Botones accesibles reutilizables
 │   │   │   ├── Header.jsx                    # Cabecera unificada con cierre de sesión
+│   │   │   ├── PwaStatusBanner.jsx           # Banner de instalación PWA, modo offline y sincronización
 │   │   │   ├── RiskBadge.jsx                 # Insignia de nivel de riesgo
 │   │   │   └── SafetyStars.jsx               # Estrellas de seguridad (enfoque positivo TAM)
 │   │   ├── dashboard/
@@ -244,27 +282,29 @@ pwa-prevencion-caidas/
 │   │   └── surveyData.js                     # Preguntas Morse y 15 peligros ambientales con guías
 │   ├── hooks/
 │   │   ├── useDesktop.js                     # Detección responsiva escritorio / móvil
-│   │   ├── useMorseSurvey.js                 # Estado y puntaje de la evaluación preventiva
+│   │   ├── useMorseSurvey.js                 # Estado, borrador offline y puntaje de la evaluación preventiva
+│   │   ├── usePwaStatus.js                   # Registro de Service Worker, estado online/offline e instalación PWA
 │   │   └── useRealtimeStability.js           # Telemetría Realtime, agrupación diaria y deterioro longitudinal
 │   ├── modules/
 │   │   ├── AdminPanelModule.jsx              # Panel de Control e Investigación
 │   │   ├── DashboardModule.jsx               # Panel Principal del participante
 │   │   ├── LoginModule.jsx                   # Inicio de sesión y registro sincronizado
-│   │   ├── RecommendationsModule.jsx         # Resultados, Acordeón por Habitación y guardado
+│   │   ├── RecommendationsModule.jsx         # Resultados, Acordeón por Habitación y guardado offline/online
 │   │   └── SurveyModule.jsx                  # Flujo guiado de bienvenida, red de apoyo y encuesta
 │   ├── services/
+│   │   ├── offlineStorage.js                 # Caché local de sesión/borrador y cola de sincronización diferida
 │   │   ├── sessionService.js                 # Operaciones Supabase (perfiles, sesiones, telemetría, PDF) y ESP32
 │   │   └── supabaseClient.js                 # Inicialización del cliente Supabase
 │   ├── styles/
 │   │   └── theme.js                          # Sistema de diseño accesible WCAG 2.1 AA
 │   ├── utils/
 │   │   └── riskStatus.js                     # Clasificación de riesgo y estrellas de protección
-│   ├── App.jsx                               # Orquestador de autenticación, roles y vistas
+│   ├── App.jsx                               # Orquestador de autenticación, roles, vistas y sincronización PWA
 │   ├── index.css                             # Estilos base, foco accesible y animaciones CSS
 │   └── main.jsx                              # Punto de entrada React
-├── index.html
+├── index.html                                # Metadatos PWA (theme-color, apple-touch-icon, manifest)
 ├── package.json
-└── vite.config.js
+└── vite.config.js                            # Configuración de Vite 8 + VitePWA (Manifest y Workbox)
 ```
 
 ---
@@ -298,6 +338,17 @@ npm run dev
 ```
 La aplicación estará disponible localmente en `http://localhost:5173`.
 
+### 4. Probar la PWA (Instalabilidad y Modo Offline)
+El Service Worker y `manifest.webmanifest` se generan en el build de producción:
+
+```bash
+npm run build
+npm run preview
+```
+1. Abre `http://localhost:4173` en Chrome o Edge.
+2. Verifica en **DevTools → Application → Manifest / Service Workers** el manifiesto (`display: standalone`, `theme_color: #0F766E`, íconos `192×192` / `512×512`) y el Service Worker activo.
+3. Activa la casilla **Offline** en **DevTools → Network** y recarga para comprobar que la encuesta, el plano arquitectónico SVG y las recomendaciones siguen operando sin conexión.
+
 ---
 
 ## Scripts Disponibles
@@ -305,6 +356,6 @@ La aplicación estará disponible localmente en `http://localhost:5173`.
 | Comando | Descripción |
 | :--- | :--- |
 | `npm run dev` | Inicia el servidor de desarrollo local con Vite (HMR). |
-| `npm run build` | Genera el bundle optimizado de producción en `dist/`. |
-| `npm run preview` | Previsualiza localmente la compilación de producción. |
+| `npm run build` | Genera el bundle optimizado de producción junto con `manifest.webmanifest` y el Service Worker (`sw.js`) en `dist/`. |
+| `npm run preview` | Sirve localmente el build de producción para probar instalabilidad PWA y modo sin conexión. |
 | `npm run lint` | Ejecuta ESLint sobre el código fuente. |
