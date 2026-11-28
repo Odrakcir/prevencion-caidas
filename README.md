@@ -25,24 +25,21 @@ El sistema combina la evaluación preventiva de factores físicos y del entorno 
 ## Características Principales
 
 ### 1. Experiencia para el Adulto Mayor y Red de Apoyo
-- **Acceso y Registro Simplificado (`LoginModule`):** Inicio de sesión y autoregistro sincronizado automáticamente entre **Supabase Auth** y la tabla `public.usuarios` mediante el mismo UUID, validación de RUT chileno y botón de alto contraste para mostrar/ocultar contraseña.
 - **Evaluación Preventiva Guiada (`SurveyModule`):**
   - Registro de contacto familiar / red de apoyo.
   - Cuestionario preventivo adaptado de la **Escala de Morse** (paso a paso, 1 pregunta por pantalla).
   - **Revisión Interactiva del Hogar por 5 Habitaciones (`RoomFloorPlan`):** Ilustraciones arquitectónicas SVG interactivas (*Sala, Cocina, Dormitorio, Baño y Pasillos*) con pines numerados (`1`, `2`, `3`) sincronizados bidireccionalmente con 15 factores ambientales (`A1`–`E3`) y descripciones cotidianas.
 - **Resultados y Plan de Acción (`RecommendationsModule`):**
-  - **Estrellas de Seguridad (1 a 5 ★):** Retroalimentación positiva orientada al fortalecimiento de la autonomía.
+  - **Estrellas de Seguridad (1 a 5 ★):** Retroalimentación positiva asociada al puntaje obtenido en la **Escala de Morse** y a los factores ambientales detectados (`5 ★` sin factores de riesgo, `4 ★` 1–24 pts / 1–2 peligros, `3 ★` 25–34 pts / 3–4 peligros, `2 ★` 35–44 pts / 5–6 peligros y `1 ★` ≥ 45 pts o ≥ 7 peligros), orientada al fortalecimiento de la autonomía.
   - **Acordeón por Habitación:** Agrupa solo las habitaciones donde se detectaron factores de riesgo, con barra de progreso y casillas interactivas.
   - **Guardado Explícito de Avances:** Botón dedicado *"Guardar Mis Recomendaciones"* con confirmación visual y persistencia en Supabase + respaldo local offline.
   - **Exportación y Difusión:** Descarga de **Ficha Preventiva en PDF** (agrupada por habitación + lista de *Primeros Pasos Sugeridos* con casillas para imprimir en familia) y envío directo por **WhatsApp**.
 
 ### 2. Panel de Control e Investigación (`AdminPanelModule`)
-- **Directorio de Participantes:** Alta de participantes con RUT, visualización de nivel de riesgo actual, acceso a evaluaciones y generación de reportes PDF (las cuentas administradoras con `is_admin = true` se excluyen automáticamente del directorio y del selector de pruebas).
 - **Control Remoto de Sesiones IoT:** Configuración persistente de la IP local del ESP32 y control de inicio/fin de sesiones (`POST /start` y `POST /stop`) sincronizado con `sesiones_prueba`.
 - **Análisis de Estabilidad y Telemetría (`StabilityChart` & `StabilityChartSvg`):**
   - **Última Sesión (o sesión seleccionada):** Curva continua en tiempo real vía **Supabase Realtime** sobre la sesión completa del día, con **desplazamiento horizontal, eje Y fijo**, botones rápidos (*Inicio / Más reciente*), cálculo trigonométrico de inclinación (`Math.acos`) y nodos destacados de alerta.
   - **Histórico Completo:** Agrupación diaria en **gráfico de barras con línea de tendencia**, indicador de carga durante consultas largas, filtro de alertas y tarjetas compactas de **Tendencia Semanal y Diaria**.
-  - **Estado Inactivo sin Datos Simulados:** Cuando un participante aún no posee sesiones registradas, el gráfico permanece en gris estático para evitar confusión.
 - **Recomendaciones Cruzadas (`CrossAlerts`):** Motor de cruce entre telemetría de sensores y `peligros_ambientales` que genera sugerencias preventivas personalizadas ante 3 escenarios:
   1. **Iluminación Nocturna:** Variaciones de estabilidad entre `20:00` y `06:00` + `iluminacion_deficiente`.
   2. **Apoyo en el Baño:** Episodios de inestabilidad + `ausencia_barras`.
@@ -75,7 +72,7 @@ El diseño de la interfaz sigue pautas de accesibilidad web (**WCAG 2.1 AA**, al
 │  React 19 + Vite (SVG)    │                                         │ ESP32 + MPU6050 + FSR406 │
 └─────────────┬─────────────┘                                         └────────────┬─────────────┘
               │                                                                    │
-              │ Supabase JS (Auth, REST, Realtime WebSocket)                       │ POST cada ~3s
+              │ Supabase JS (Auth, REST, Realtime WebSocket)                       │ POST ventanas (~5s)
               ▼                                                                    ▼
 ┌───────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                   Supabase (PostgreSQL)                                       │
@@ -92,21 +89,46 @@ El diseño de la interfaz sigue pautas de accesibilidad web (**WCAG 2.1 AA**, al
 - **Iniciar captura:** `POST http://<IP_ESP32>/start` con cuerpo `{ "id_sesion": "<uuid>" }`
 - **Detener captura:** `POST http://<IP_ESP32>/stop` con cuerpo `{ "id_sesion": null }`
 
-### Formato esperado en `eventos_telemetria.datos_cinematicos` (JSONB)
-El ESP32 envía paquetes aproximados cada 3 segundos con la siguiente estructura cinemática:
+### Formato real en `eventos_telemetria.datos_cinematicos` (JSONB — Firmware `v2.1`)
+El ESP32 agrupa las lecturas en ventanas de ~5 segundos (`ventana_ms`), consolidando datos del sensor inercial **MPU6050** (aceleración y giroscopio), presión plantar **FSR406**, métricas de ciclo de marcha y estado del enlace **BLE**:
 
 ```json
 {
-  "ax": 0.12,
-  "ay": -0.08,
-  "az": 9.75,
-  "estado_pie": "apoyado",
-  "cadencia": 48,
-  "presion_max_intervalo": 52
+  "ax": -0.58,
+  "ay": -0.01,
+  "az": 9.41,
+  "gx": -0.054,
+  "gy": 0.007,
+  "gz": 0.017,
+  "mpu_ok": true,
+  "n_apoyo": 0,
+  "n_ciclo": 0,
+  "cadencia": 0,
+  "estado_pie": "levantado",
+  "n_balanceo": 0,
+  "ventana_ms": 5009,
+  "version_fw": "v2.1",
+  "ble_vigente": true,
+  "fsr_muestras": 51,
+  "mpu_muestras": 178,
+  "contactos_fsr": 0,
+  "fsr_max_crudo": 0,
+  "fsr_min_crudo": 0,
+  "fsr_saturadas": 0,
+  "apoyo_ms_media": 0,
+  "ciclo_ms_media": 0,
+  "aceleracion_max": 9.48,
+  "aceleracion_min": 9.37,
+  "aceleracion_media": 9.43,
+  "aceleracion_total": 9.43,
+  "balanceo_ms_media": 0,
+  "ble_perdidas_total": 0,
+  "levantamientos_fsr": 0,
+  "presion_max_intervalo": 0
 }
 ```
 
-A partir de `(ax, ay, az)` el frontend calcula la aceleración resultante y el ángulo de inclinación real mediante trigonometría protegida (`Math.acos(clamp(az / g, -1, 1))`) para clasificar cada lectura en zona **Estable (80–100%)**, **Precaución (50–79%)** o **Alerta (0–49%)**.
+A partir de `(ax, ay, az)`, `estado_pie`, `cadencia` y `presion_max_intervalo`, el frontend calcula la aceleración resultante y el ángulo de inclinación real mediante trigonometría protegida (`Math.acos(clamp(az / g, -1, 1))`) para clasificar cada ventana en zona **Estable (80–100%)**, **Precaución (50–79%)** o **Alerta (0–49%)**.
 
 ---
 
