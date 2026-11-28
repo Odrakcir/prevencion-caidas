@@ -1,33 +1,228 @@
-# Asistente Hogar Seguro
+# Asistente Hogar Seguro (PWA + IoT)
 
-Plataforma web progresiva (PWA) diseñada para la prevención de caídas en adultos mayores. El sistema integra una evaluación clínica basada en la **Escala de Morse**, un panel de administración para investigadores y la conexión en tiempo real con sensores IoT (ESP32) para el monitoreo de la marcha.
+**Plataforma web progresiva (PWA) integrada con telemetría IoT** desarrollada como proyecto de tesis universitaria para la **prevención de caídas y fomento de la autonomía domiciliaria en adultos mayores**.
+
+El sistema combina la evaluación preventiva de factores físicos y del entorno del hogar con el seguimiento de la marcha mediante sensores inerciales y plantares (**ESP32 + MPU6050 + FSR406**), ofreciendo dos experiencias diferenciadas: una interfaz simplificada en lenguaje positivo para el adulto mayor y un panel de análisis técnico para el investigador.
+
+> **Aviso Ético y Académico:** *Hogar Seguro* es un prototipo universitario con fines exclusivamente educativos, ergonómicos y preventivos. **No emite diagnósticos médicos, pronósticos de salud ni indicaciones farmacológicas**, y no reemplaza la evaluación de un profesional de la salud.
+
+---
+
+## Tabla de Contenidos
+
+- [Características Principales](#características-principales)
+- [Accesibilidad Gerontológica (WCAG 2.1 AA) y Modelo TAM](#accesibilidad-gerontológica-wcag-21-aa-y-modelo-tam)
+- [Arquitectura del Sistema](#arquitectura-del-sistema)
+- [Integración Hardware IoT (ESP32)](#integración-hardware-iot-esp32)
+- [Modelo de Base de Datos (Supabase)](#modelo-de-base-de-datos-supabase)
+- [Tecnologías Utilizadas](#tecnologías-utilizadas)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [Instalación y Ejecución Local](#instalación-y-ejecución-local)
+- [Scripts Disponibles](#scripts-disponibles)
+
+---
 
 ## Características Principales
 
-- **Evaluación Clínica:** Flujo interactivo accesible (WCAG 2.1 AA) basado en la Escala de Morse para determinar el nivel de riesgo de caídas.
-- **Panel de Administración (Investigador):** 
-  - Registro y gestión de pacientes.
-  - Asignación de evaluaciones de riesgo.
-  - Control de sesiones de prueba en vivo.
-  - Visualización de telemetría en tiempo real.
-- **Integración IoT:** Comunicación vía HTTP con microcontroladores ESP32 (sensores en cintura y pie) para iniciar y detener la captura de datos cinemáticos.
-- **Base de Datos en la Nube:** Sincronización en tiempo real con Supabase (PostgreSQL y Auth).
+### 1. Experiencia para el Adulto Mayor y Red de Apoyo
+- **Acceso y Registro Simplificado (`LoginModule`):** Inicio de sesión y autoregistro sincronizado automáticamente entre **Supabase Auth** y la tabla `public.usuarios` mediante el mismo UUID, validación de RUT chileno y botón de alto contraste para mostrar/ocultar contraseña.
+- **Evaluación Preventiva Guiada (`SurveyModule`):**
+  - Registro de contacto familiar / red de apoyo.
+  - Cuestionario preventivo adaptado de la **Escala de Morse** (paso a paso, 1 pregunta por pantalla).
+  - **Revisión Interactiva del Hogar por 5 Habitaciones (`RoomFloorPlan`):** Ilustraciones arquitectónicas SVG interactivas (*Sala, Cocina, Dormitorio, Baño y Pasillos*) con pines numerados (`1`, `2`, `3`) sincronizados bidireccionalmente con 15 factores ambientales (`A1`–`E3`) y descripciones cotidianas.
+- **Resultados y Plan de Acción (`RecommendationsModule`):**
+  - **Estrellas de Seguridad (1 a 5 ★):** Retroalimentación positiva orientada al fortalecimiento de la autonomía.
+  - **Acordeón por Habitación:** Agrupa solo las habitaciones donde se detectaron factores de riesgo, con barra de progreso y casillas interactivas.
+  - **Guardado Explícito de Avances:** Botón dedicado *"Guardar Mis Recomendaciones"* con confirmación visual y persistencia en Supabase + respaldo local offline.
+  - **Exportación y Difusión:** Descarga de **Ficha Preventiva en PDF** (agrupada por habitación + lista de *Primeros Pasos Sugeridos* con casillas para imprimir en familia) y envío directo por **WhatsApp**.
+
+### 2. Panel de Control e Investigación (`AdminPanelModule`)
+- **Directorio de Participantes:** Alta de participantes con RUT, visualización de nivel de riesgo actual, acceso a evaluaciones y generación de reportes PDF (las cuentas administradoras con `is_admin = true` se excluyen automáticamente del directorio y del selector de pruebas).
+- **Control Remoto de Sesiones IoT:** Configuración persistente de la IP local del ESP32 y control de inicio/fin de sesiones (`POST /start` y `POST /stop`) sincronizado con `sesiones_prueba`.
+- **Análisis de Estabilidad y Telemetría (`StabilityChart` & `StabilityChartSvg`):**
+  - **Última Sesión (o sesión seleccionada):** Curva continua en tiempo real vía **Supabase Realtime** sobre la sesión completa del día, con **desplazamiento horizontal, eje Y fijo**, botones rápidos (*Inicio / Más reciente*), cálculo trigonométrico de inclinación (`Math.acos`) y nodos destacados de alerta.
+  - **Histórico Completo:** Agrupación diaria en **gráfico de barras con línea de tendencia**, indicador de carga durante consultas largas, filtro de alertas y tarjetas compactas de **Tendencia Semanal y Diaria**.
+  - **Estado Inactivo sin Datos Simulados:** Cuando un participante aún no posee sesiones registradas, el gráfico permanece en gris estático para evitar confusión.
+- **Recomendaciones Cruzadas (`CrossAlerts`):** Motor de cruce entre telemetría de sensores y `peligros_ambientales` que genera sugerencias preventivas personalizadas ante 3 escenarios:
+  1. **Iluminación Nocturna:** Variaciones de estabilidad entre `20:00` y `06:00` + `iluminacion_deficiente`.
+  2. **Apoyo en el Baño:** Episodios de inestabilidad + `ausencia_barras`.
+  3. **Rutas y Superficies:** Episodios de inestabilidad + `alfombras_sueltas` u `obstaculos_ruta`.
+- **Reporte Longitudinal de Deterioro en PDF:** Exporta en formato A4 un **Análisis Histórico de Marcha** con estabilidad promedio global, días con alertas, tablas comparativas de **evolución por semanas y por días**, detección de posibles deterioros y recomendaciones cruzadas generadas.
+- **Acordeón de Seguimiento de Recomendaciones (`AdminRecommendationsAccordion`):** Agrupa por categoría las recomendaciones almacenadas en Supabase permitiendo marcar/desmarcar su cumplimiento (`estado_aplicada`).
+
+---
+
+## Accesibilidad Gerontológica (WCAG 2.1 AA) y Modelo TAM
+
+El diseño de la interfaz sigue pautas de accesibilidad web (**WCAG 2.1 AA**, alcanzando contraste **AAA** en lectura principal) y los principios del **Modelo de Aceptación Tecnológica (TAM)** de Davis:
+
+| Dimensión | Implementación en el Sistema |
+| :--- | :--- |
+| **Contraste y Legibilidad (WCAG 1.4.3)** | Paleta clara forzada (`color-scheme: light`), texto principal `#0F172A` sobre `#FFFFFF` (17.8:1), cuerpo `#334155` (10.7:1) y botones `#FFFFFF` sobre `#0F766E` (5.4:1). |
+| **Independencia del Color (WCAG 1.4.1)** | Todo estado combina color con número, ícono (`✓`, `!N`) y texto explícito. |
+| **Objetivos Táctiles Amplios (WCAG 2.5.5)** | Botones y campos con altura mínima de `52–58 px` y tarjetas interactivas de `≥ 60–76 px` adaptadas a pantallas móviles. |
+| **Navegación y Semántica (WCAG 2.1.1 / 2.4.7)** | Foco visible de `3 px`, atributos ARIA (`role="checkbox"`, `aria-expanded`, `aria-live`) y diseño responsivo sin scroll horizontal innecesario. |
+| **Facilidad de Uso Percibida (TAM - PEOU)** | Flujo lineal paso a paso, lenguaje cotidiano libre de tecnicismos, planos visuales interactivos y guardado explícito con confirmación. |
+| **Utilidad Percibida (TAM - PU)** | Estrellas de seguridad en positivo, plan de acción accionable por habitación, ficha PDF imprimible y alertas cruzadas preventivas. |
+
+---
+
+## Arquitectura del Sistema
+
+```text
+┌───────────────────────────┐        HTTP POST (/start, /stop)        ┌──────────────────────────┐
+│     PWA Hogar Seguro      │ ──────────────────────────────────────► │   Microcontrolador IoT   │
+│  React 19 + Vite (SVG)    │                                         │ ESP32 + MPU6050 + FSR406 │
+└─────────────┬─────────────┘                                         └────────────┬─────────────┘
+              │                                                                    │
+              │ Supabase JS (Auth, REST, Realtime WebSocket)                       │ POST cada ~3s
+              ▼                                                                    ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Supabase (PostgreSQL)                                       │
+│   Auth · usuarios · sesiones_prueba · eventos_telemetria · evaluaciones_mfs                   │
+│   peligros_ambientales · recomendaciones · contactos_emergencia · dispositivos_iot            │
+└───────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Integración Hardware IoT (ESP32)
+
+### Comandos enviados desde el Panel de Investigador
+- **Iniciar captura:** `POST http://<IP_ESP32>/start` con cuerpo `{ "id_sesion": "<uuid>" }`
+- **Detener captura:** `POST http://<IP_ESP32>/stop` con cuerpo `{ "id_sesion": null }`
+
+### Formato esperado en `eventos_telemetria.datos_cinematicos` (JSONB)
+El ESP32 envía paquetes aproximados cada 3 segundos con la siguiente estructura cinemática:
+
+```json
+{
+  "ax": 0.12,
+  "ay": -0.08,
+  "az": 9.75,
+  "estado_pie": "apoyado",
+  "cadencia": 48,
+  "presion_max_intervalo": 52
+}
+```
+
+A partir de `(ax, ay, az)` el frontend calcula la aceleración resultante y el ángulo de inclinación real mediante trigonometría protegida (`Math.acos(clamp(az / g, -1, 1))`) para clasificar cada lectura en zona **Estable (80–100%)**, **Precaución (50–79%)** o **Alerta (0–49%)**.
+
+---
+
+## Modelo de Base de Datos (Supabase)
+
+La aplicación consume 8 tablas relacionales en el esquema `public` de PostgreSQL:
+
+| Tabla | Propósito |
+| :--- | :--- |
+| `usuarios` | Perfil del participante (`id_usuario`, `rut`, `nombres`, `apellidos`, `fecha_nacimiento`, `nivel_riesgo_actual`, `is_admin`). |
+| `contactos_emergencia` | Red de apoyo familiar asociada a cada participante. |
+| `evaluaciones_mfs` | Registro histórico de evaluaciones basadas en la Escala de Morse y puntaje total. |
+| `peligros_ambientales` | Factores del hogar consolidados (`iluminacion_deficiente`, `alfombras_sueltas`, `ausencia_barras`, `obstaculos_ruta`). |
+| `recomendaciones` | Plan de acción generado por categoría/habitación con seguimiento `estado_aplicada`. |
+| `dispositivos_iot` | Registro y estado de conexión de sensores vinculados. |
+| `sesiones_prueba` | Sesiones de monitoreo (`activa` / `finalizada`) con fechas de inicio y término. |
+| `eventos_telemetria` | Lecturas cinemáticas en formato `jsonb` vinculadas a `id_sesion` e `id_dispositivo`. |
+
+---
 
 ## Tecnologías Utilizadas
 
-- **Frontend:** React 18, Vite, CSS (estilos inline modulares).
-- **Backend / Base de Datos:** Supabase (PostgreSQL, Row Level Security, Auth).
-- **Hardware (IoT):** ESP32, sensores MPU6050 (acelerómetro/giroscopio) y FSR406 (presión plantar).
+- **Frontend:** React 19, Vite 8, SVG puro (gráficos interactivos y planos de habitaciones sin librerías externas de charting), CSS modular y estilos responsivos.
+- **Backend / BaaS:** Supabase (`@supabase/supabase-js` v2 — Auth, PostgreSQL, Paginación y Realtime).
+- **Hardware IoT:** ESP32, sensor inercial MPU6050 (aceleración 3 ejes) y sensor de fuerza plantar FSR406.
 
-##  Estructura del Proyecto
+---
+
+## Estructura del Proyecto
 
 ```text
-src/
-├── components/          # Componentes de UI (Botones, Gráficos, Header)
-├── constants/           # Datos estáticos (Preguntas de la encuesta)
-├── hooks/               # Lógica de estado (Autenticación, Telemetría, Encuesta)
-├── modules/             # Pantallas principales (Login, Admin, Vistas de usuario)
-├── services/            # Conexión con Supabase y llamadas HTTP al ESP32
-├── styles/              # Tema global y estilos compartidos
-├── utils/               # Funciones auxiliares (Cálculo de riesgo)
-└── App.jsx              # Orquestador de rutas y roles
+pwa-prevencion-caidas/
+├── public/
+│   └── logo-utem.png                         # Logotipo institucional para reportes PDF
+├── src/
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── Button.jsx                    # Botones accesibles reutilizables
+│   │   │   ├── Header.jsx                    # Cabecera unificada con cierre de sesión
+│   │   │   ├── RiskBadge.jsx                 # Insignia de nivel de riesgo
+│   │   │   └── SafetyStars.jsx               # Estrellas de seguridad (enfoque positivo TAM)
+│   │   ├── dashboard/
+│   │   │   ├── AdminRecommendationsAccordion.jsx  # Acordeón de recomendaciones en Admin
+│   │   │   ├── CrossAlerts.jsx               # Recomendaciones Cruzadas (telemetría vs. entorno)
+│   │   │   ├── PrintModal.jsx                # Ficha Preventiva imprimible / PDF
+│   │   │   ├── StabilityChart.jsx            # Panel de KPIs, tendencias, filtros y PDF histórico
+│   │   │   ├── StabilityChartSvg.jsx         # Gráficos SVG (scroll horizontal + barras diarias)
+│   │   │   ├── StabilityLegend.jsx           # Leyenda de zonas de estabilidad
+│   │   │   └── StabilityTooltip.jsx          # Detalle interactivo por lectura o por día
+│   │   └── survey/
+│   │       └── RoomFloorPlan.jsx             # 5 planos arquitectónicos SVG interactivos
+│   ├── constants/
+│   │   └── surveyData.js                     # Preguntas Morse y 15 peligros ambientales con guías
+│   ├── hooks/
+│   │   ├── useDesktop.js                     # Detección responsiva escritorio / móvil
+│   │   ├── useMorseSurvey.js                 # Estado y puntaje de la evaluación preventiva
+│   │   └── useRealtimeStability.js           # Telemetría Realtime, agrupación diaria y deterioro longitudinal
+│   ├── modules/
+│   │   ├── AdminPanelModule.jsx              # Panel de Control e Investigación
+│   │   ├── DashboardModule.jsx               # Panel Principal del participante
+│   │   ├── LoginModule.jsx                   # Inicio de sesión y registro sincronizado
+│   │   ├── RecommendationsModule.jsx         # Resultados, Acordeón por Habitación y guardado
+│   │   └── SurveyModule.jsx                  # Flujo guiado de bienvenida, red de apoyo y encuesta
+│   ├── services/
+│   │   ├── sessionService.js                 # Operaciones Supabase (perfiles, sesiones, telemetría, PDF) y ESP32
+│   │   └── supabaseClient.js                 # Inicialización del cliente Supabase
+│   ├── styles/
+│   │   └── theme.js                          # Sistema de diseño accesible WCAG 2.1 AA
+│   ├── utils/
+│   │   └── riskStatus.js                     # Clasificación de riesgo y estrellas de protección
+│   ├── App.jsx                               # Orquestador de autenticación, roles y vistas
+│   ├── index.css                             # Estilos base, foco accesible y animaciones CSS
+│   └── main.jsx                              # Punto de entrada React
+├── index.html
+├── package.json
+└── vite.config.js
+```
+
+---
+
+## Instalación y Ejecución Local
+
+### Requisitos previos
+- **Node.js** v18 o superior y **npm**.
+- Un proyecto activo en **Supabase** con las tablas descritas y autenticación por correo habilitada.
+
+### 1. Clonar e instalar dependencias
+```bash
+git clone <url-del-repositorio>
+cd pwa-prevencion-caidas
+npm install
+```
+
+### 2. Configurar variables de entorno
+Crea un archivo `.env` en la raíz del proyecto con las credenciales de tu proyecto en Supabase:
+
+```env
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+VITE_SUPABASE_ANON_KEY=tu_clave_publica_anon
+```
+
+> **Nota sobre roles:** Las cuentas creadas desde la pantalla **Crear Cuenta** se registran automáticamente con `is_admin = false`. Para habilitar una cuenta como investigador/administrador, actualiza su columna `is_admin = true` directamente en la tabla `public.usuarios` de Supabase.
+
+### 3. Iniciar servidor de desarrollo
+```bash
+npm run dev
+```
+La aplicación estará disponible localmente en `http://localhost:5173`.
+
+---
+
+## Scripts Disponibles
+
+| Comando | Descripción |
+| :--- | :--- |
+| `npm run dev` | Inicia el servidor de desarrollo local con Vite (HMR). |
+| `npm run build` | Genera el bundle optimizado de producción en `dist/`. |
+| `npm run preview` | Previsualiza localmente la compilación de producción. |
+| `npm run lint` | Ejecuta ESLint sobre el código fuente. |
