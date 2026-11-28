@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import { useIsDesktop } from "../../hooks/useDesktop";
 
 export default function StabilityChartSvg({
@@ -9,42 +10,46 @@ export default function StabilityChartSvg({
   emptyMessage = "Esperando datos de la sesión...",
 }) {
   const isDesktop = useIsDesktop();
+  const scrollContainerRef = useRef(null);
+  const prevCountRef = useRef(0);
+
   const displayData = filteredDataSet || [];
   const totalPoints = displayData.length;
 
-  // Sistema de coordenadas calibrado con exactitud matemática
-  const viewWidth = 560;
-  const viewHeight = 250;
-  const plotLeft = 52;
-  const plotRight = 540;
-  const plotWidth = plotRight - plotLeft;
-  const chartTop = 26;
-  const chartBottom = 196;
-  const chartHeight = chartBottom - chartTop; // 170px -> 1.7px por punto porcentual
+  // En modo sesión/en vivo con muchos puntos activamos desplazamiento horizontal con eje Y fijo
+  const useHorizontalScroll =
+    !isHistoryMode && !isInactive && totalPoints > 25;
 
-  const getY = (stability) => {
-    const clamped = Math.max(0, Math.min(100, Number(stability) || 0));
-    return chartBottom - (clamped / 100) * chartHeight;
+  // Al cargar una sesión larga o recibir nuevas lecturas estando al final, desplazamos al extremo derecho
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !useHorizontalScroll) {
+      prevCountRef.current = totalPoints;
+      return;
+    }
+
+    const wasInitialLoad = prevCountRef.current === 0 || Math.abs(totalPoints - prevCountRef.current) > 5;
+    const isNearRight = el.scrollWidth - el.clientWidth - el.scrollLeft < 120;
+
+    if (wasInitialLoad || isNearRight) {
+      el.scrollLeft = el.scrollWidth;
+    }
+    prevCountRef.current = totalPoints;
+  }, [totalPoints, useHorizontalScroll]);
+
+  const scrollToStart = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ left: 0, behavior: "smooth" });
+    }
   };
 
-  // Límites exactos de zonas clínicas (100%, 80%, 50%, 0%)
-  const y100 = getY(100);
-  const y80 = getY(80);
-  const y50 = getY(50);
-  const y0 = getY(0);
-
-  // Coordenada X según modo:
-  // - Histórico: columnas centradas en slots equiespaciados (funciona bien con 1, 2 o 7 días)
-  // - En vivo: puntos distribuidos de borde a borde (centrado si solo hay 1 lectura)
-  const getPointX = (index) => {
-    if (isHistoryMode) {
-      const slotWidth = plotWidth / Math.max(totalPoints, 1);
-      return plotLeft + slotWidth * index + slotWidth / 2;
+  const scrollToEnd = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        left: scrollContainerRef.current.scrollWidth,
+        behavior: "smooth",
+      });
     }
-    if (totalPoints <= 1) return plotLeft + plotWidth / 2;
-    const innerLeft = plotLeft + 14;
-    const innerRight = plotRight - 14;
-    return innerLeft + (index / (totalPoints - 1)) * (innerRight - innerLeft);
   };
 
   const isPointSelected = (d) => {
@@ -63,7 +68,361 @@ export default function StabilityChartSvg({
     );
   };
 
-  // Trazado de línea y área (usado completo en modo vivo y como tendencia sutil en histórico)
+  // =========================================================================
+  // MODO 1: SESIÓN COMPLETA CON DESPLAZAMIENTO HORIZONTAL + EJE Y FIJO
+  // =========================================================================
+  if (useHorizontalScroll) {
+    const svgHeight = isDesktop ? 290 : 240;
+    const chartTop = 24;
+    const chartBottom = svgHeight - 42;
+    const chartHeight = chartBottom - chartTop;
+
+    const getY = (stability) => {
+      const clamped = Math.max(0, Math.min(100, Number(stability) || 0));
+      return chartBottom - (clamped / 100) * chartHeight;
+    };
+
+    const y100 = getY(100);
+    const y80 = getY(80);
+    const y50 = getY(50);
+    const y0 = getY(0);
+
+    // Espaciado adaptable para que incluso miles de lecturas del día se vean limpias y fluidas
+    const pxPerPoint =
+      totalPoints <= 250
+        ? 22
+        : totalPoints <= 1000
+          ? 14
+          : Math.max(8, Math.floor(20000 / totalPoints));
+
+    const padX = 24;
+    const contentWidth = Math.max(
+      680,
+      padX * 2 + (totalPoints - 1) * pxPerPoint,
+    );
+
+    const getX = (index) => padX + index * pxPerPoint;
+
+    const pathString = displayData
+      .map((d, i) => `${i === 0 ? "M" : "L"} ${getX(i)} ${getY(d.stability)}`)
+      .join(" ");
+
+    const areaString = `${pathString} L ${getX(totalPoints - 1)} ${y0} L ${getX(0)} ${y0} Z`;
+
+    // Etiquetas de hora cada ~95px sin superposición
+    const labelStep = Math.max(1, Math.ceil(95 / pxPerPoint));
+    const shouldShowLabel = (index) => {
+      if (index === 0 || index === totalPoints - 1) return true;
+      return (
+        index % labelStep === 0 &&
+        totalPoints - 1 - index >= Math.ceil(labelStep * 0.6)
+      );
+    };
+
+    const firstTime = displayData[0]?.time || "";
+    const lastTime = displayData[totalPoints - 1]?.time || "";
+
+    return (
+      <div
+        style={{
+          width: "100%",
+          backgroundColor: "#FFFFFF",
+          border: "1px solid #CBD5E1",
+          borderRadius: "12px",
+          padding: isDesktop ? "12px 14px 10px" : "10px 8px 8px",
+          boxSizing: "border-box",
+        }}
+      >
+        {/* Barra guía de desplazamiento horizontal */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "8px",
+            marginBottom: "8px",
+            paddingBottom: "8px",
+            borderBottom: "1px solid #F1F5F9",
+            fontSize: "12.5px",
+            color: "#475569",
+          }}
+        >
+          <span style={{ fontWeight: "600" }}>
+            Sesión completa: <strong>{totalPoints} lecturas</strong> ({firstTime}{" "}
+            – {lastTime}) · Desliza horizontalmente
+          </span>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              type="button"
+              onClick={scrollToStart}
+              style={{
+                padding: "4px 10px",
+                fontSize: "12px",
+                fontWeight: "700",
+                borderRadius: "6px",
+                border: "1px solid #CBD5E1",
+                backgroundColor: "#F8FAFC",
+                color: "#334155",
+                cursor: "pointer",
+              }}
+            >
+              ← Inicio
+            </button>
+            <button
+              type="button"
+              onClick={scrollToEnd}
+              style={{
+                padding: "4px 10px",
+                fontSize: "12px",
+                fontWeight: "700",
+                borderRadius: "6px",
+                border: "1px solid #0F766E",
+                backgroundColor: "#F0FDFA",
+                color: "#0F766E",
+                cursor: "pointer",
+              }}
+            >
+              Más reciente →
+            </button>
+          </div>
+        </div>
+
+        {/* Contenedor Flex: Eje Y fijo a la izquierda + área desplazable a la derecha */}
+        <div style={{ display: "flex", alignItems: "stretch", width: "100%" }}>
+          {/* Eje Y fijo (siempre visible al hacer scroll) */}
+          <svg
+            width="46"
+            height={svgHeight}
+            viewBox={`0 0 46 ${svgHeight}`}
+            aria-hidden="true"
+            style={{ flexShrink: 0, display: "block" }}
+          >
+            {[
+              { value: 100, y: y100, labelColor: "#065F46" },
+              { value: 80, y: y80, labelColor: "#047857" },
+              { value: 50, y: y50, labelColor: "#B45309" },
+              { value: 0, y: y0, labelColor: "#64748B" },
+            ].map((tick) => (
+              <text
+                key={tick.value}
+                x="40"
+                y={tick.y + 4}
+                fill={tick.labelColor}
+                fontSize="11.5"
+                fontWeight="700"
+                textAnchor="end"
+              >
+                {tick.value}%
+              </text>
+            ))}
+          </svg>
+
+          {/* Zona desplazable horizontalmente */}
+          <div
+            ref={scrollContainerRef}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: "4px",
+            }}
+          >
+            <svg
+              width={contentWidth}
+              height={svgHeight}
+              viewBox={`0 0 ${contentWidth} ${svgHeight}`}
+              role="img"
+              aria-label="Gráfico desplazable de telemetría de estabilidad de la sesión completa"
+              style={{ display: "block" }}
+            >
+              <defs>
+                <linearGradient
+                  id="liveScrollAreaGradient"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor="#0F766E" stopOpacity="0.26" />
+                  <stop offset="100%" stopColor="#0F766E" stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+
+              {/* Bandas de estabilidad exactas */}
+              <rect
+                x="0"
+                y={y100}
+                width={contentWidth}
+                height={y80 - y100}
+                fill="#ECFDF5"
+                opacity="0.75"
+              />
+              <rect
+                x="0"
+                y={y80}
+                width={contentWidth}
+                height={y50 - y80}
+                fill="#FFFBEB"
+                opacity="0.75"
+              />
+              <rect
+                x="0"
+                y={y50}
+                width={contentWidth}
+                height={y0 - y50}
+                fill="#FEF2F2"
+                opacity="0.7"
+              />
+
+              {/* Líneas horizontales alineadas exactamente con el eje Y fijo */}
+              {[
+                { value: 100, y: y100, color: "#059669" },
+                { value: 80, y: y80, color: "#10B981" },
+                { value: 50, y: y50, color: "#D97706" },
+                { value: 0, y: y0, color: "#CBD5E1" },
+              ].map((tick) => (
+                <line
+                  key={tick.value}
+                  x1="0"
+                  y1={tick.y}
+                  x2={contentWidth}
+                  y2={tick.y}
+                  stroke={tick.color}
+                  strokeWidth={tick.value === 0 ? "1.5" : "1"}
+                  strokeDasharray={tick.value === 0 ? undefined : "4 4"}
+                  opacity={tick.value === 0 ? "1" : "0.65"}
+                />
+              ))}
+
+              {/* Área sombreada y curva continua */}
+              <path d={areaString} fill="url(#liveScrollAreaGradient)" />
+              <path
+                d={pathString}
+                fill="none"
+                stroke="#0F766E"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {/* Nodos clickeables y etiquetas horarias */}
+              {displayData.map((d, i) => {
+                const x = getX(i);
+                const y = getY(d.stability);
+                const isAlert = d.event !== null;
+                const selected = isPointSelected(d);
+                const pointColor = isAlert
+                  ? "#DC2626"
+                  : d.statusColor || "#0F766E";
+                const showCircle = selected || isAlert || pxPerPoint >= 16;
+                const radius = selected ? 6.5 : isAlert ? 5.5 : 3.5;
+
+                return (
+                  <g
+                    key={d.id || `${d.time}-${i}`}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => onSelectPoint(d)}
+                  >
+                    <rect
+                      x={x - Math.max(8, pxPerPoint / 2)}
+                      y={chartTop}
+                      width={Math.max(16, pxPerPoint)}
+                      height={chartHeight + 36}
+                      fill="transparent"
+                    />
+
+                    {selected && (
+                      <line
+                        x1={x}
+                        y1={chartTop}
+                        x2={x}
+                        y2={y0}
+                        stroke="#0F766E"
+                        strokeWidth="1.5"
+                        strokeDasharray="4 3"
+                        opacity="0.7"
+                      />
+                    )}
+
+                    {(isAlert || selected) && (
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={radius + 4}
+                        fill={isAlert ? "#DC2626" : "#0F766E"}
+                        opacity="0.18"
+                      />
+                    )}
+
+                    {showCircle && (
+                      <circle
+                        cx={x}
+                        cy={y}
+                        r={radius}
+                        fill={pointColor}
+                        stroke="#FFFFFF"
+                        strokeWidth="1.5"
+                      />
+                    )}
+
+                    {shouldShowLabel(i) && (
+                      <text
+                        x={x}
+                        y={y0 + 20}
+                        fill={selected ? "#0F766E" : "#475569"}
+                        fontSize="11.5"
+                        fontWeight={selected ? "800" : "600"}
+                        textAnchor="middle"
+                      >
+                        {d.time}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // MODO 2: HISTÓRICO, SESIONES CORTAS (≤ 25 LECTURAS) O INACTIVO
+  // =========================================================================
+  const viewWidth = 560;
+  const viewHeight = 250;
+  const plotLeft = 52;
+  const plotRight = 540;
+  const plotWidth = plotRight - plotLeft;
+  const chartTop = 26;
+  const chartBottom = 196;
+  const chartHeight = chartBottom - chartTop;
+
+  const getY = (stability) => {
+    const clamped = Math.max(0, Math.min(100, Number(stability) || 0));
+    return chartBottom - (clamped / 100) * chartHeight;
+  };
+
+  const y100 = getY(100);
+  const y80 = getY(80);
+  const y50 = getY(50);
+  const y0 = getY(0);
+
+  const getPointX = (index) => {
+    if (isHistoryMode) {
+      const slotWidth = plotWidth / Math.max(totalPoints, 1);
+      return plotLeft + slotWidth * index + slotWidth / 2;
+    }
+    if (totalPoints <= 1) return plotLeft + plotWidth / 2;
+    const innerLeft = plotLeft + 14;
+    const innerRight = plotRight - 14;
+    return innerLeft + (index / (totalPoints - 1)) * (innerRight - innerLeft);
+  };
+
   const pathString = displayData
     .map((d, i) => `${i === 0 ? "M" : "L"} ${getPointX(i)} ${getY(d.stability)}`)
     .join(" ");
@@ -73,11 +432,9 @@ export default function StabilityChartSvg({
       ? `${pathString} L ${getPointX(totalPoints - 1)} ${y0} L ${getPointX(0)} ${y0} Z`
       : "";
 
-  // Ancho de barra proporcional para modo histórico
   const historySlotWidth = plotWidth / Math.max(totalPoints, 1);
   const barWidth = Math.min(48, Math.max(22, historySlotWidth * 0.48));
 
-  // Índices de etiquetas X para modo en vivo sin superposición
   const maxLiveLabels = isDesktop ? 6 : 4;
   const shouldShowLiveLabel = (index) => {
     if (totalPoints <= maxLiveLabels) return true;
@@ -212,7 +569,7 @@ export default function StabilityChartSvg({
           </g>
         ))}
 
-        {/* MODO HISTÓRICO: Barras clínicas diarias + línea de tendencia */}
+        {/* MODO HISTÓRICO: Barras diarias + línea de tendencia */}
         {isHistoryMode && totalPoints > 0 && (
           <>
             {displayData.map((d, i) => {
@@ -229,7 +586,6 @@ export default function StabilityChartSvg({
                   style={{ cursor: "pointer" }}
                   onClick={() => onSelectPoint(d)}
                 >
-                  {/* Área táctil amplia para selección cómoda en móvil */}
                   <rect
                     x={cx - historySlotWidth / 2}
                     y={chartTop - 10}
@@ -239,7 +595,6 @@ export default function StabilityChartSvg({
                     rx="6"
                   />
 
-                  {/* Barra vertical con bordes superiores redondeados */}
                   <rect
                     x={cx - barWidth / 2}
                     y={barTop}
@@ -252,7 +607,6 @@ export default function StabilityChartSvg({
                     strokeWidth={selected ? "2" : "0"}
                   />
 
-                  {/* Porcentaje exacto sobre la barra */}
                   <text
                     x={cx}
                     y={Math.max(15, barTop - 8)}
@@ -264,7 +618,6 @@ export default function StabilityChartSvg({
                     {d.stability}%
                   </text>
 
-                  {/* Indicador de alertas del día si existen */}
                   {hasAlerts && (
                     <g>
                       <rect
@@ -290,7 +643,6 @@ export default function StabilityChartSvg({
                     </g>
                   )}
 
-                  {/* Etiqueta Eje X: Día + Fecha corta */}
                   <text
                     x={cx}
                     y={y0 + 18}
@@ -317,7 +669,6 @@ export default function StabilityChartSvg({
               );
             })}
 
-            {/* Línea de tendencia conectando los promedios diarios */}
             {totalPoints > 1 && (
               <path
                 d={pathString}
@@ -332,7 +683,7 @@ export default function StabilityChartSvg({
           </>
         )}
 
-        {/* MODO EN VIVO / DETALLE DE SESIÓN: Curva continua con nodos de alerta */}
+        {/* MODO SESIÓN CORTA (≤ 25 puntos): Curva continua */}
         {!isHistoryMode && totalPoints > 0 && (
           <>
             {totalPoints > 1 && (
@@ -354,13 +705,10 @@ export default function StabilityChartSvg({
               const y = getY(d.stability);
               const isAlert = d.event !== null;
               const selected = isPointSelected(d);
-              const pointColor = isAlert ? "#DC2626" : d.statusColor || "#0F766E";
-
-              // Las alertas y el punto seleccionado SIEMPRE son visibles aunque haya >30 puntos
-              const showCircle =
-                selected || isAlert || totalPoints <= 30 || totalPoints === 1;
+              const pointColor = isAlert
+                ? "#DC2626"
+                : d.statusColor || "#0F766E";
               const radius = selected ? 6.5 : isAlert ? 5.5 : 4;
-
               const hitWidth =
                 totalPoints > 1 ? Math.max(14, plotWidth / totalPoints) : 60;
 
@@ -370,7 +718,6 @@ export default function StabilityChartSvg({
                   style={{ cursor: "pointer" }}
                   onClick={() => onSelectPoint(d)}
                 >
-                  {/* Columna táctil invisible para facilitar toque en celular */}
                   <rect
                     x={x - hitWidth / 2}
                     y={chartTop}
@@ -379,7 +726,6 @@ export default function StabilityChartSvg({
                     fill="transparent"
                   />
 
-                  {/* Línea guía vertical del punto seleccionado */}
                   {selected && (
                     <line
                       x1={x}
@@ -393,7 +739,6 @@ export default function StabilityChartSvg({
                     />
                   )}
 
-                  {/* Halo para alertas o selección */}
                   {(isAlert || selected) && (
                     <circle
                       cx={x}
@@ -404,18 +749,15 @@ export default function StabilityChartSvg({
                     />
                   )}
 
-                  {showCircle && (
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={radius}
-                      fill={pointColor}
-                      stroke="#FFFFFF"
-                      strokeWidth="1.75"
-                    />
-                  )}
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={radius}
+                    fill={pointColor}
+                    stroke="#FFFFFF"
+                    strokeWidth="1.75"
+                  />
 
-                  {/* Etiquetas de hora Eje X */}
                   {shouldShowLiveLabel(i) && (
                     <text
                       x={x}

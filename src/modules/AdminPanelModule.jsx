@@ -5,6 +5,7 @@ import PrintModal from "../components/dashboard/PrintModal";
 import Button from "../components/common/Button";
 import Header from "../components/common/Header";
 import StabilityChart from "../components/dashboard/StabilityChart";
+import AdminRecommendationsAccordion from "../components/dashboard/AdminRecommendationsAccordion";
 import { supabase } from "../services/supabaseClient";
 import {
   startSession,
@@ -326,6 +327,36 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
   const getLastRisk = (idUsuario) => {
     const patient = patients.find((p) => p.id_usuario === idUsuario);
     return patient?.nivel_riesgo_actual || "Sin evaluar";
+  };
+
+  const handleToggleRecommendationApplied = async (rec) => {
+    const nextValue = !rec.estado_aplicada;
+
+    // Actualización optimista inmediata en la interfaz
+    setPatientRecommendations((prev) =>
+      prev.map((item) =>
+        item.id_recomendacion === rec.id_recomendacion
+          ? { ...item, estado_aplicada: nextValue }
+          : item,
+      ),
+    );
+
+    const { error } = await supabase
+      .from("recomendaciones")
+      .update({ estado_aplicada: nextValue })
+      .eq("id_recomendacion", rec.id_recomendacion);
+
+    if (error) {
+      console.error("Error actualizando recomendación:", error);
+      // Revertimos si falló en Supabase
+      setPatientRecommendations((prev) =>
+        prev.map((item) =>
+          item.id_recomendacion === rec.id_recomendacion
+            ? { ...item, estado_aplicada: rec.estado_aplicada }
+            : item,
+        ),
+      );
+    }
   };
 
   // --- ESTILOS LOCALES ---
@@ -964,70 +995,21 @@ export default function AdminPanelModule({ onExit, onStartEvaluation }) {
                 selectedGraphPoint={selectedGraphPoint}
                 setSelectedGraphPoint={setSelectedGraphPoint}
                 hazards={patientHazards}
+                canExportHistoryPdf={true}
+                patient={
+                  patients.find((p) => p.id_usuario === selectedPatientId) ||
+                  null
+                }
               />
             </div>
           </div>
 
-          {/* 4. RECOMENDACIONES */}
+          {/* 4. RECOMENDACIONES (Acordeón por categoría conectado a Supabase) */}
           {viewMode === "history" && patientRecommendations.length > 0 && (
-            <div style={adminStyles.card}>
-              <h3 style={adminStyles.sectionTitle}>Plan de Acción Generado</h3>
-              <p
-                style={{
-                  fontSize: "14px",
-                  color: "#4B5563",
-                  marginBottom: "16px",
-                }}
-              >
-                Estas son las adaptaciones recomendadas para el hogar del
-                participante según sus evaluaciones:
-              </p>
-              <ul style={{ listStyle: "none", padding: 0 }}>
-                {patientRecommendations.map((r) => (
-                  <li
-                    key={r.id_recomendacion}
-                    style={{
-                      padding: "12px",
-                      borderBottom: "1px solid #E5E7EB",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <strong
-                        style={{
-                          color: "#0D9488",
-                          fontSize: "12px",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        {r.tipo_recomendacion}
-                      </strong>
-                      <p style={{ margin: "4px 0 0 0", fontSize: "14px" }}>
-                        {r.descripcion}
-                      </p>
-                    </div>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={r.estado_aplicada}
-                        readOnly
-                      />
-                      Aplicada
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <AdminRecommendationsAccordion
+              recommendations={patientRecommendations}
+              onToggleApplied={handleToggleRecommendationApplied}
+            />
           )}
 
           {/* 5. HISTORIAL DE SESIONES */}

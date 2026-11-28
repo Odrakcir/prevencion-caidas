@@ -1,10 +1,8 @@
 import { getStyles } from "../styles/theme";
 import { useIsDesktop } from "../hooks/useDesktop";
-import { useTelemetry } from "../hooks/useTelemetry";
 import Button from "../components/common/Button";
 import RiskBadge from "../components/common/RiskBadge";
 import StabilityChart from "../components/dashboard/StabilityChart";
-import SensorCard from "../components/dashboard/SensorCard";
 import PrintModal from "../components/dashboard/PrintModal";
 import { useState } from "react";
 
@@ -20,7 +18,6 @@ export default function DashboardView({
 }) {
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
-  const { simMode, setSimMode, simData } = useTelemetry();
 
   const [graphTimeframe, setGraphTimeframe] = useState("today");
   const [graphFilter, setGraphFilter] = useState("all");
@@ -112,66 +109,6 @@ export default function DashboardView({
               Generar Ficha Imprimible
             </Button>
           </div>
-
-          <div
-            style={{
-              ...styles.card,
-              border: "2px dashed #0D9488",
-              backgroundColor: "#F0FDFA",
-            }}
-          >
-            <h3
-              style={{
-                ...styles.cardTitle,
-                fontSize: "16px",
-                color: "#0D9488",
-              }}
-            >
-              Simulador de Estado de Marcha (ESP32)
-            </h3>
-            <p
-              style={{
-                fontSize: "14px",
-                color: "#374151",
-                marginBottom: "10px",
-              }}
-            >
-              Alterne la actividad para probar cómo responden los nodos de
-              hardware:
-            </p>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <Button
-                fullWidth={false}
-                style={{
-                  margin: 0,
-                  minHeight: "42px",
-                  fontSize: "14px",
-                  flex: 1,
-                  backgroundColor:
-                    simMode === "standing" ? "#0D9488" : "#E5E7EB",
-                  color: simMode === "standing" ? "#FFFFFF" : "#374151",
-                }}
-                onClick={() => setSimMode("standing")}
-              >
-                Estático
-              </Button>
-              <Button
-                fullWidth={false}
-                style={{
-                  margin: 0,
-                  minHeight: "42px",
-                  fontSize: "14px",
-                  flex: 1,
-                  backgroundColor:
-                    simMode === "walking" ? "#0D9488" : "#E5E7EB",
-                  color: simMode === "walking" ? "#FFFFFF" : "#374151",
-                }}
-                onClick={() => setSimMode("walking")}
-              >
-                Caminando
-              </Button>
-            </div>
-          </div>
         </div>
 
         {/* Columna 2 */}
@@ -193,7 +130,7 @@ export default function DashboardView({
             </p>
             <div
               style={{
-                borderTop: "2px solid #E5E7EB",
+                borderTop: "1px solid #E2E8F0",
                 paddingTop: "12px",
                 marginTop: "12px",
                 fontSize: "15px",
@@ -203,75 +140,56 @@ export default function DashboardView({
                 Puntaje Escala de Morse: <strong>{morseScore} / 125 pts</strong>
               </p>
               <p style={{ margin: "4px 0" }}>
-                Peligros del Hogar:{" "}
+                Factores del Hogar:{" "}
                 <strong>{selectedHazardsCount} identificados</strong>
               </p>
             </div>
           </div>
-
-          <div style={styles.card}>
-            <h3 style={{ ...styles.cardTitle, color: "#0D9488" }}>
-              Adaptación Recomendada del Hogar
-            </h3>
-            <ul
-              style={{
-                paddingLeft: "20px",
-                fontSize: "16px",
-                lineHeight: "1.6",
-                margin: 0,
-              }}
-            >
-              {mappedHazards.alfombras_sueltas && (
-                <li style={{ marginBottom: "8px" }}>
-                  <strong>Alfombras:</strong> Fijar o retirar alfombras sueltas
-                  en zonas de tránsito.
-                </li>
-              )}
-              {mappedHazards.iluminacion_deficiente && (
-                <li style={{ marginBottom: "8px" }}>
-                  <strong>Iluminación:</strong> Instalar luces automáticas
-                  nocturnas en pasillos.
-                </li>
-              )}
-              {mappedHazards.ausencia_barras && (
-                <li style={{ marginBottom: "8px" }}>
-                  <strong>Sujeciones:</strong> Instalar barras firmes en WC y
-                  ducha.
-                </li>
-              )}
-              {mappedHazards.obstaculos_ruta && (
-                <li style={{ marginBottom: "8px" }}>
-                  <strong>Rutas Libres:</strong> Mantener suelos despejados de
-                  cables y objetos.
-                </li>
-              )}
-              {!hasAnyMappedHazard && (
-                <li style={{ marginBottom: "8px" }}>
-                  Espacios del hogar ordenados y libres de obstáculos
-                  identificados.
-                </li>
-              )}
-            </ul>
-          </div>
-
-          <div style={styles.card}>
-            <h3 style={{ ...styles.cardTitle, fontSize: "17px" }}>
-              Monitores Físicos en Tiempo Real
-            </h3>
-
-            <SensorCard
-              title="Nodo Lumbar (MPU6050)"
-              value={`${simData.tilt}° Inclinación`}
-              subtitle={`Aceleración: ${simData.accelY} G`}
-            />
-            <SensorCard
-              title="Nodo Plantar (FSR406)"
-              value={`${simData.fsrPressure}% Fuerza`}
-              subtitle={`Estado: ${simData.gaitPhase}`}
-              isLast
-            />
-          </div>
         </div>
+      </div>
+
+      {/* Adaptación Recomendada del Hogar (ancho completo equilibrado) */}
+      <div style={styles.card}>
+        <h3 style={{ ...styles.cardTitle, color: "#0F766E" }}>
+          Adaptación Recomendada del Hogar
+        </h3>
+        <ul
+          style={{
+            paddingLeft: "20px",
+            fontSize: "16px",
+            lineHeight: "1.6",
+            margin: 0,
+          }}
+        >
+          {mappedHazards.alfombras_sueltas && (
+            <li style={{ marginBottom: "8px" }}>
+              <strong>Alfombras:</strong> Fijar o retirar alfombras sueltas en
+              zonas de tránsito.
+            </li>
+          )}
+          {mappedHazards.iluminacion_deficiente && (
+            <li style={{ marginBottom: "8px" }}>
+              <strong>Iluminación:</strong> Instalar luces automáticas nocturnas
+              en pasillos.
+            </li>
+          )}
+          {mappedHazards.ausencia_barras && (
+            <li style={{ marginBottom: "8px" }}>
+              <strong>Sujeciones:</strong> Instalar barras firmes en WC y ducha.
+            </li>
+          )}
+          {mappedHazards.obstaculos_ruta && (
+            <li style={{ marginBottom: "8px" }}>
+              <strong>Rutas Libres:</strong> Mantener suelos despejados de
+              cables y objetos.
+            </li>
+          )}
+          {!hasAnyMappedHazard && (
+            <li style={{ marginBottom: "8px" }}>
+              Espacios del hogar ordenados y libres de obstáculos identificados.
+            </li>
+          )}
+        </ul>
       </div>
 
       <div

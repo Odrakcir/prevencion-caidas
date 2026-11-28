@@ -70,12 +70,12 @@ export async function fetchActiveSessions() {
   return data;
 }
 
-// 4. Traer todos los usuarios/participantes para el dropdown
+// 4. Traer todos los participantes (excluyendo cuentas con is_admin = true)
 export async function fetchAllPatients() {
   const { data, error } = await supabase
     .from("usuarios")
-    // Tu tabla usa "rut" en vez de "email"
-    .select("id_usuario, nombres, apellidos, rut, nivel_riesgo_actual")
+    .select("id_usuario, nombres, apellidos, rut, nivel_riesgo_actual, is_admin")
+    .or("is_admin.is.null,is_admin.eq.false")
     .order("nombres", { ascending: true });
 
   if (error) throw error;
@@ -418,4 +418,110 @@ export async function fetchUserLatestContext(idUsuario) {
         }
       : null,
   };
+}
+
+// 16. Obtener recomendaciones guardadas de un usuario
+export async function fetchUserRecommendations(idUsuario) {
+  if (!idUsuario) return [];
+
+  const { data, error } = await supabase
+    .from("recomendaciones")
+    .select("*")
+    .eq("id_usuario", idUsuario)
+    .order("fecha_generacion", { ascending: false });
+
+  if (error) {
+    console.error("Error cargando recomendaciones del usuario:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// 17. Guardar/sincronizar el avance de recomendaciones marcadas por el participante en public.recomendaciones
+export async function saveUserRecommendationsProgress(
+  idUsuario,
+  activeHazards,
+  checkedActions,
+  recommendationsMap,
+) {
+  if (!idUsuario || !Array.isArray(activeHazards) || activeHazards.length === 0) {
+    return { savedToDb: false };
+  }
+
+  const existing = await fetchUserRecommendations(idUsuario);
+
+  // Mapeo de respaldo para actualizar también las recomendaciones legadas generadas por categoría
+  const legacyCategoryByHazard = {
+    A1: "Entorno",
+    B3: "Entorno",
+    C1: "Iluminación",
+    E3: "Iluminación",
+    D1: "Baño",
+    A2: "Obstáculos",
+    E1: "Obstáculos",
+  };
+
+  const toInsert = [];
+  const updates = [];
+
+  for (const h of activeHazards) {
+    const actionText = recommendationsMap[h.id]?.action;
+    if (!actionText) continue;
+
+    const isApplied = Boolean(checkedActions[h.id]);
+
+    // Buscamos si ya existe esta recomendación exacta para este usuario
+    const exactMatch = existing.find((row) => row.descripcion === actionText);
+    if (exactMatch) {
+      if (exactMatch.estado_aplicada !== isApplied) {
+        updates.push(
+          supabase
+            .from("recomendaciones")
+            .update({ estado_aplicada: isApplied })
+            .eq("id_recomendacion", exactMatch.id_recomendacion),
+        );
+      }
+    } else {
+      toInsert.push({
+        id_usuario: idUsuario,
+        tipo_recomendacion: h.zone,
+        descripcion: actionText,
+        estado_aplicada: isApplied,
+      });
+    }
+
+    // Si existe una fila legada con la categoría correspondiente, mantenemos su estado coherente
+    const legacyCat = legacyCategoryByHazard[h.id];
+    if (legacyCat) {
+      const legacyMatch = existing.find(
+        (row) =>
+          row.tipo_recomendacion === legacyCat &&
+          row.descripcion !== actionText,
+      );
+      if (legacyMatch && legacyMatch.estado_aplicada !== isApplied) {
+        updates.push(
+          supabase
+            .from("recomendaciones")
+            .update({ estado_aplicada: isApplied })
+            .eq("id_recomendacion", legacyMatch.id_recomendacion),
+        );
+      }
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insertErr } = await supabase
+      .from("recomendaciones")
+      .insert(toInsert);
+    if (insertErr) throw insertErr;
+  }
+
+  if (updates.length > 0) {
+    const results = await Promise.all(updates);
+    const failed = results.find((r) => r.error);
+    if (failed?.error) throw failed.error;
+  }
+
+  return { savedToDb: true };
 }

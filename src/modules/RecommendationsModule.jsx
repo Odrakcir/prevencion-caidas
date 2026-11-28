@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getStyles } from "../styles/theme";
 import { useIsDesktop } from "../hooks/useDesktop";
 import Button from "../components/common/Button";
 import SafetyStars from "../components/common/SafetyStars";
 import PrintModal from "../components/dashboard/PrintModal";
 import { ENVIRONMENTAL_HAZARDS } from "../constants/surveyData";
+import {
+  fetchUserRecommendations,
+  saveUserRecommendationsProgress,
+} from "../services/sessionService";
 
 // Mapeo estático de prefijos de ID a habitaciones del hogar
 const ZONES_CONFIG = [
@@ -123,8 +127,49 @@ export default function RecommendationsModule({
   const [openZone, setOpenZone] = useState(
     () => groupedZones[0]?.name || null,
   );
-  const [checkedActions, setCheckedActions] = useState({});
+
+  const storageKey = userProfile?.id_usuario
+    ? `hogar_seguro_recs_${userProfile.id_usuario}`
+    : "hogar_seguro_recs_local";
+
+  const [checkedActions, setCheckedActions] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // null | "saved" | "error"
+  const [lastSavedTime, setLastSavedTime] = useState(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Sincronizamos el estado inicial con las recomendaciones ya guardadas en Supabase
+  useEffect(() => {
+    if (!userProfile?.id_usuario) return;
+    let isMounted = true;
+
+    fetchUserRecommendations(userProfile.id_usuario).then((rows) => {
+      if (!isMounted || !rows.length) return;
+      const fromDb = {};
+      ENVIRONMENTAL_HAZARDS.forEach((h) => {
+        const actionText = RECOMMENDATIONS_MAP[h.id]?.action;
+        const match = rows.find((r) => r.descripcion === actionText);
+        if (match) {
+          fromDb[h.id] = Boolean(match.estado_aplicada);
+        }
+      });
+      if (Object.keys(fromDb).length > 0) {
+        setCheckedActions((prev) => ({ ...prev, ...fromDb }));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userProfile?.id_usuario]);
 
   const completedCount = activeHazards.filter(
     (h) => checkedActions[h.id],
@@ -140,6 +185,45 @@ export default function RecommendationsModule({
 
   const toggleActionDone = (id) => {
     setCheckedActions((prev) => ({ ...prev, [id]: !prev[id] }));
+    setHasUnsavedChanges(true);
+    setSaveStatus(null);
+  };
+
+  const handleSaveRecommendations = async () => {
+    setSaving(true);
+    setSaveStatus(null);
+
+    try {
+      // 1. Guardamos respaldo local inmediato en el dispositivo (PWA)
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(checkedActions));
+      } catch {
+        // Ignoramos si el almacenamiento local no está disponible
+      }
+
+      // 2. Guardamos en Supabase si hay usuario autenticado
+      if (userProfile?.id_usuario) {
+        await saveUserRecommendationsProgress(
+          userProfile.id_usuario,
+          activeHazards,
+          checkedActions,
+          RECOMMENDATIONS_MAP,
+        );
+      }
+
+      const nowStr = new Date().toLocaleTimeString("es-CL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      setLastSavedTime(nowStr);
+      setHasUnsavedChanges(false);
+      setSaveStatus("saved");
+    } catch (err) {
+      console.error("Error guardando recomendaciones:", err);
+      setSaveStatus("error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -589,6 +673,124 @@ export default function RecommendationsModule({
                   </div>
                 );
               })}
+            </div>
+
+            {/* BLOQUE EXPLÍCITO DE GUARDADO PARA ADULTOS MAYORES */}
+            <div
+              style={{
+                marginTop: "18px",
+                padding: isDesktop ? "16px 18px" : "14px",
+                borderRadius: "12px",
+                backgroundColor:
+                  saveStatus === "saved" && !hasUnsavedChanges
+                    ? "#ECFDF5"
+                    : hasUnsavedChanges
+                      ? "#FFFBEB"
+                      : "#F8FAFC",
+                border:
+                  saveStatus === "saved" && !hasUnsavedChanges
+                    ? "1.5px solid #10B981"
+                    : hasUnsavedChanges
+                      ? "1.5px solid #F59E0B"
+                      : "1px solid #E2E8F0",
+              }}
+            >
+              {saveStatus === "saved" && !hasUnsavedChanges && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    marginBottom: "10px",
+                    color: "#065F46",
+                    fontSize: "15.5px",
+                    fontWeight: "700",
+                    lineHeight: "1.45",
+                  }}
+                >
+                  ✓ ¡Tus recomendaciones fueron guardadas correctamente!
+                  {lastSavedTime && (
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: "13.5px",
+                        fontWeight: "500",
+                        color: "#047857",
+                        marginTop: "2px",
+                      }}
+                    >
+                      Último guardado a las {lastSavedTime}. Tu progreso queda
+                      registrado de forma segura.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {saveStatus === "error" && (
+                <div
+                  role="alert"
+                  style={{
+                    marginBottom: "10px",
+                    color: "#991B1B",
+                    fontSize: "14.5px",
+                    fontWeight: "700",
+                    lineHeight: "1.45",
+                  }}
+                >
+                  No se pudo conectar con el servidor, pero tu avance quedó
+                  guardado en este dispositivo. Intenta guardar nuevamente en un
+                  momento.
+                </div>
+              )}
+
+              {hasUnsavedChanges && (
+                <p
+                  style={{
+                    margin: "0 0 10px 0",
+                    fontSize: "15px",
+                    fontWeight: "700",
+                    color: "#92400E",
+                    lineHeight: "1.45",
+                  }}
+                >
+                  Tienes cambios marcados sin guardar. Presiona el botón para
+                  guardar tus recomendaciones.
+                </p>
+              )}
+
+              {!hasUnsavedChanges && saveStatus !== "saved" && (
+                <p
+                  style={{
+                    margin: "0 0 10px 0",
+                    fontSize: "14.5px",
+                    color: "#334155",
+                    lineHeight: "1.45",
+                  }}
+                >
+                  Cuando termines de revisar o marcar tus mejoras, presiona este
+                  botón para guardar tu avance.
+                </p>
+              )}
+
+              <Button
+                variant={
+                  saveStatus === "saved" && !hasUnsavedChanges
+                    ? "back"
+                    : "primary"
+                }
+                onClick={handleSaveRecommendations}
+                disabled={saving}
+                style={{
+                  minHeight: "56px",
+                  fontSize: "18px",
+                  margin: 0,
+                }}
+              >
+                {saving
+                  ? "Guardando recomendaciones..."
+                  : saveStatus === "saved" && !hasUnsavedChanges
+                    ? "✓ Recomendaciones Guardadas (Guardar de nuevo)"
+                    : "Guardar Mis Recomendaciones"}
+              </Button>
             </div>
           </>
         )}

@@ -33,27 +33,25 @@ function isNightEvent(item) {
   return minutes > 20 * 60 || minutes < 6 * 60;
 }
 
-export default function CrossAlerts({ telemetryData = [], hazards = {} }) {
-  const isDesktop = useIsDesktop();
-
+/**
+ * Calcula las recomendaciones cruzadas (telemetría vs. entorno) para reutilizar
+ * tanto en pantalla como al exportar el Análisis Histórico a PDF.
+ */
+export function computeCrossRecommendations(telemetryData = [], hazards = {}) {
   const safeTelemetry = Array.isArray(telemetryData) ? telemetryData : [];
   const safeHazards = hazards || {};
 
-  // Filtramos los registros donde el sensor detectó un episodio de inestabilidad
   const instabilityEvents = safeTelemetry.filter(
     (d) => d && d.event !== null && d.event !== undefined,
   );
 
-  if (instabilityEvents.length === 0) return null;
+  if (instabilityEvents.length === 0) return [];
 
   const nightEvents = instabilityEvents.filter(isNightEvent);
   const recommendations = [];
 
   // 1. Sugerencia Nocturna (> 20:00 o < 06:00 + iluminación deficiente)
-  if (
-    nightEvents.length > 0 &&
-    safeHazards.iluminacion_deficiente === true
-  ) {
+  if (nightEvents.length > 0 && safeHazards.iluminacion_deficiente === true) {
     recommendations.push({
       id: "nocturna",
       badge: "Iluminación Nocturna",
@@ -87,6 +85,13 @@ export default function CrossAlerts({ telemetryData = [], hazards = {} }) {
         "El sensor registró episodios de inestabilidad y se reportaron alfombras sueltas u obstáculos. Se recomienda despejar las rutas de tránsito y fijar las alfombras al piso.",
     });
   }
+
+  return recommendations;
+}
+
+export default function CrossAlerts({ telemetryData = [], hazards = {} }) {
+  const isDesktop = useIsDesktop();
+  const recommendations = computeCrossRecommendations(telemetryData, hazards);
 
   // Si no se cumple ninguna condición de cruce, no renderizamos nada
   if (recommendations.length === 0) return null;
