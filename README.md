@@ -128,7 +128,45 @@ El ESP32 agrupa las lecturas en ventanas de ~5 segundos (`ventana_ms`), consolid
 }
 ```
 
-A partir de `(ax, ay, az)`, `estado_pie`, `cadencia` y `presion_max_intervalo`, el frontend calcula la aceleración resultante y el ángulo de inclinación real mediante trigonometría protegida (`Math.acos(clamp(az / g, -1, 1))`) para clasificar cada ventana en zona **Estable (80–100%)**, **Precaución (50–79%)** o **Alerta (0–49%)**.
+A partir de `(ax, ay, az)`, `estado_pie`, `cadencia` y `presion_max_intervalo`, el frontend transforma cada paquete crudo en métricas interpretables para los gráficos y reportes.
+
+### Procesamiento de Telemetría y Fórmulas de Transformación
+
+El traspaso desde las lecturas crudas del sensor (`eventos_telemetria`) hasta los gráficos interactivos ocurre en 5 etapas dentro de `useRealtimeStability.js` y `StabilityChartSvg.jsx`:
+
+1. **Magnitud de Aceleración Resultante ($g$):**
+   $$g = \sqrt{a_x^2 + a_y^2 + a_z^2}$$
+   Se calcula a partir de los tres ejes del acelerómetro MPU6050 (en $\text{m/s}^2$, redondeada a 2 decimales).
+
+2. **Ángulo de Inclinación Real ($\theta$, en grados):**
+   $$\theta = \operatorname{round}\!\left(\arccos\!\left(\operatorname{clamp}\!\left(\frac{a_z}{g},\,-1,\,1\right)\right) \cdot \frac{180}{\pi}\right)$$
+   - La función $\operatorname{clamp}(\cdot, -1, 1)$ evita errores numéricos (`NaN`) por imprecisión de punto flotante.
+   - En postura erguida ($a_z \approx g$), $\theta \approx 0^\circ$; al inclinarse el tronco, el ángulo crece proporcionalmente.
+
+3. **Cálculo del Índice de Estabilidad (`0%` – `100%`) y Detección de Eventos:**
+
+   | Condición Cinética y Plantar | Estabilidad Asignada | Evento Registrado |
+   | :--- | :---: | :--- |
+   | `cadencia == 0` y $\theta < 10^\circ$ (reposo erguido) | **`100%`** | Ninguno (`null`) |
+   | `estado_pie == "apoyado"` (pie con apoyo firme) | **`95%`** | Ninguno (`null`) |
+   | `estado_pie != "apoyado"` y $\theta \le 15^\circ$ (balanceo normal) | **`90%`** | Ninguno (`null`) |
+   | `estado_pie != "apoyado"` y $15^\circ < \theta \le 25^\circ$ | **`60%`** | `Balanceo Inestable` |
+   | `estado_pie != "apoyado"` y $\theta > 25^\circ$ | **`20%`** | `Riesgo de Caída` |
+
+4. **Mapeo a Zonas Visuales y Coordenadas SVG:**
+   - **Bandas de referencia:** Verde / **Estable** (`80% – 100%`), Ámbar / **Precaución** (`50% – 79%`) y Rojo / **Alerta** (`0% – 49%`).
+   - **Proyección vertical exacta en el SVG:**
+     $$y(s) = y_{\text{base}} - \left(\frac{\operatorname{clamp}(s, 0, 100)}{100}\right) \cdot H_{\text{gráfico}}$$
+   - En **Última Sesión**, cada ventana se grafica cronológicamente en una curva de área continua desplazable horizontalmente (destacando en rojo todo nodo con `event != null`).
+
+5. **Agregación Histórica y Detección de Deterioro Longitudinal:**
+   - **Agrupación diaria (`processWeeklyData`):** Agrupa los eventos por fecha calendario local (`YYYY-MM-DD`, evitando desfases UTC) y calcula el promedio diario:
+     $$\bar{s}_d = \operatorname{round}\!\left(\frac{1}{N_d}\sum_{i=1}^{N_d} s_i\right)$$
+     junto con la estabilidad mínima del día, inclinación promedio, cadencia promedio y conteo real de alertas (`alertsCount`).
+   - **Análisis de deterioro por semanas y días (`analyzeGaitProgression`):** Agrupa todas las sesiones por semana calendario (Lunes–Domingo) y por día, evaluando la variación $\Delta = \bar{s}_t - \bar{s}_{t-1}$:
+     - $\Delta \le -5\%$ → **Posible deterioro / descenso relevante**.
+     - $-4\% \le \Delta \le +4\%$ → **Comportamiento estable**.
+     - $\Delta \ge +5\%$ → **Tendencia favorable / mejora**.
 
 ---
 
