@@ -139,8 +139,8 @@ El traspaso desde las lecturas crudas del sensor (`eventos_telemetria`) hasta lo
    Se calcula a partir de los tres ejes del acelerómetro MPU6050 (en $\text{m/s}^2$, redondeada a 2 decimales).
 
 2. **Ángulo de Inclinación Real ($\theta$, en grados):**
-   $$\theta = \operatorname{round}\!\left(\arccos\!\left(\operatorname{clamp}\!\left(\frac{a_z}{g},\,-1,\,1\right)\right) \cdot \frac{180}{\pi}\right)$$
-   - La función $\operatorname{clamp}(\cdot, -1, 1)$ evita errores numéricos (`NaN`) por imprecisión de punto flotante.
+   $$\theta = \mathrm{round}\!\left(\arccos\!\left(\mathrm{clamp}\!\left(\frac{a_z}{g},\,-1,\,1\right)\right) \cdot \frac{180}{\pi}\right)$$
+   - La función $\mathrm{clamp}(\cdot, -1, 1)$ evita errores numéricos (`NaN`) por imprecisión de punto flotante.
    - En postura erguida ($a_z \approx g$), $\theta \approx 0^\circ$; al inclinarse el tronco, el ángulo crece proporcionalmente.
 
 3. **Cálculo del Índice de Estabilidad (`0%` – `100%`) y Detección de Eventos:**
@@ -156,12 +156,12 @@ El traspaso desde las lecturas crudas del sensor (`eventos_telemetria`) hasta lo
 4. **Mapeo a Zonas Visuales y Coordenadas SVG:**
    - **Bandas de referencia:** Verde / **Estable** (`80% – 100%`), Ámbar / **Precaución** (`50% – 79%`) y Rojo / **Alerta** (`0% – 49%`).
    - **Proyección vertical exacta en el SVG:**
-     $$y(s) = y_{\text{base}} - \left(\frac{\operatorname{clamp}(s, 0, 100)}{100}\right) \cdot H_{\text{gráfico}}$$
+     $$y(s) = y_{\text{base}} - \left(\frac{\mathrm{clamp}(s, 0, 100)}{100}\right) \cdot H_{\text{gráfico}}$$
    - En **Última Sesión**, cada ventana se grafica cronológicamente en una curva de área continua desplazable horizontalmente (destacando en rojo todo nodo con `event != null`).
 
 5. **Agregación Histórica y Detección de Deterioro Longitudinal:**
    - **Agrupación diaria (`processWeeklyData`):** Agrupa los eventos por fecha calendario local (`YYYY-MM-DD`, evitando desfases UTC) y calcula el promedio diario:
-     $$\bar{s}_d = \operatorname{round}\!\left(\frac{1}{N_d}\sum_{i=1}^{N_d} s_i\right)$$
+     $$\bar{s}_d = \mathrm{round}\!\left(\frac{1}{N_d}\sum_{i=1}^{N_d} s_i\right)$$
      junto con la estabilidad mínima del día, inclinación promedio, cadencia promedio y conteo real de alertas (`alertsCount`).
    - **Análisis de deterioro por semanas y días (`analyzeGaitProgression`):** Agrupa todas las sesiones por semana calendario (Lunes–Domingo) y por día, evaluando la variación $\Delta = \bar{s}_t - \bar{s}_{t-1}$:
      - $\Delta \le -5\%$ → **Posible deterioro / descenso relevante**.
