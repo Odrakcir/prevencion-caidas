@@ -9,6 +9,7 @@ import {
   fetchUserRecommendations,
   saveUserRecommendationsProgress,
 } from "../services/sessionService";
+import { enqueuePendingRecommendations } from "../services/offlineStorage";
 
 // Mapeo estático de prefijos de ID a habitaciones del hogar
 const ZONES_CONFIG = [
@@ -106,6 +107,7 @@ export default function RecommendationsModule({
   hazards,
   userProfile,
   onReset,
+  onOfflineQueueChange,
 }) {
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
@@ -148,23 +150,27 @@ export default function RecommendationsModule({
 
   // Sincronizamos el estado inicial con las recomendaciones ya guardadas en Supabase
   useEffect(() => {
-    if (!userProfile?.id_usuario) return;
+    if (!userProfile?.id_usuario || !navigator.onLine) return;
     let isMounted = true;
 
-    fetchUserRecommendations(userProfile.id_usuario).then((rows) => {
-      if (!isMounted || !rows.length) return;
-      const fromDb = {};
-      ENVIRONMENTAL_HAZARDS.forEach((h) => {
-        const actionText = RECOMMENDATIONS_MAP[h.id]?.action;
-        const match = rows.find((r) => r.descripcion === actionText);
-        if (match) {
-          fromDb[h.id] = Boolean(match.estado_aplicada);
+    fetchUserRecommendations(userProfile.id_usuario)
+      .then((rows) => {
+        if (!isMounted || !rows.length) return;
+        const fromDb = {};
+        ENVIRONMENTAL_HAZARDS.forEach((h) => {
+          const actionText = RECOMMENDATIONS_MAP[h.id]?.action;
+          const match = rows.find((r) => r.descripcion === actionText);
+          if (match) {
+            fromDb[h.id] = Boolean(match.estado_aplicada);
+          }
+        });
+        if (Object.keys(fromDb).length > 0) {
+          setCheckedActions((prev) => ({ ...prev, ...fromDb }));
         }
+      })
+      .catch(() => {
+        // Si no hay conexión, conservamos el respaldo local del dispositivo
       });
-      if (Object.keys(fromDb).length > 0) {
-        setCheckedActions((prev) => ({ ...prev, ...fromDb }));
-      }
-    });
 
     return () => {
       isMounted = false;
@@ -194,14 +200,34 @@ export default function RecommendationsModule({
     setSaveStatus(null);
 
     try {
-      // 1. Guardamos respaldo local inmediato en el dispositivo (PWA)
+      // 1. Guardamos respaldo local inmediato en el dispositivo (PWA Offline-First)
       try {
         localStorage.setItem(storageKey, JSON.stringify(checkedActions));
       } catch {
         // Ignoramos si el almacenamiento local no está disponible
       }
 
-      // 2. Guardamos en Supabase si hay usuario autenticado
+      const nowStr = new Date().toLocaleTimeString("es-CL", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      // 2. Si no hay conexión, encolamos para sincronizar automáticamente al recuperar señal
+      if (userProfile?.id_usuario && !navigator.onLine) {
+        enqueuePendingRecommendations({
+          idUsuario: userProfile.id_usuario,
+          activeHazards,
+          checkedActions,
+          recommendationsMap: RECOMMENDATIONS_MAP,
+        });
+        onOfflineQueueChange?.();
+        setLastSavedTime(nowStr);
+        setHasUnsavedChanges(false);
+        setSaveStatus("offline-saved");
+        return;
+      }
+
+      // 3. Guardamos en Supabase si hay usuario autenticado y conexión
       if (userProfile?.id_usuario) {
         await saveUserRecommendationsProgress(
           userProfile.id_usuario,
@@ -211,15 +237,20 @@ export default function RecommendationsModule({
         );
       }
 
-      const nowStr = new Date().toLocaleTimeString("es-CL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
       setLastSavedTime(nowStr);
       setHasUnsavedChanges(false);
       setSaveStatus("saved");
     } catch (err) {
       console.error("Error guardando recomendaciones:", err);
+      if (userProfile?.id_usuario) {
+        enqueuePendingRecommendations({
+          idUsuario: userProfile.id_usuario,
+          activeHazards,
+          checkedActions,
+          recommendationsMap: RECOMMENDATIONS_MAP,
+        });
+        onOfflineQueueChange?.();
+      }
       setSaveStatus("error");
     } finally {
       setSaving(false);
@@ -682,13 +713,15 @@ export default function RecommendationsModule({
                 padding: isDesktop ? "16px 18px" : "14px",
                 borderRadius: "12px",
                 backgroundColor:
-                  saveStatus === "saved" && !hasUnsavedChanges
+                  (saveStatus === "saved" || saveStatus === "offline-saved") &&
+                  !hasUnsavedChanges
                     ? "#ECFDF5"
                     : hasUnsavedChanges
                       ? "#FFFBEB"
                       : "#F8FAFC",
                 border:
-                  saveStatus === "saved" && !hasUnsavedChanges
+                  (saveStatus === "saved" || saveStatus === "offline-saved") &&
+                  !hasUnsavedChanges
                     ? "1.5px solid #10B981"
                     : hasUnsavedChanges
                       ? "1.5px solid #F59E0B"
@@ -720,6 +753,36 @@ export default function RecommendationsModule({
                     >
                       Último guardado a las {lastSavedTime}. Tu progreso queda
                       registrado de forma segura.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {saveStatus === "offline-saved" && !hasUnsavedChanges && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  style={{
+                    marginBottom: "10px",
+                    color: "#115E59",
+                    fontSize: "15px",
+                    fontWeight: "700",
+                    lineHeight: "1.45",
+                  }}
+                >
+                  ✓ Tu avance quedó guardado en este dispositivo (sin conexión).
+                  {lastSavedTime && (
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: "13.5px",
+                        fontWeight: "500",
+                        color: "#0F766E",
+                        marginTop: "2px",
+                      }}
+                    >
+                      Guardado localmente a las {lastSavedTime}. Se sincronizará
+                      automáticamente cuando vuelvas a tener internet.
                     </span>
                   )}
                 </div>
@@ -757,7 +820,9 @@ export default function RecommendationsModule({
                 </p>
               )}
 
-              {!hasUnsavedChanges && saveStatus !== "saved" && (
+              {!hasUnsavedChanges &&
+                saveStatus !== "saved" &&
+                saveStatus !== "offline-saved" && (
                 <p
                   style={{
                     margin: "0 0 10px 0",
@@ -773,7 +838,8 @@ export default function RecommendationsModule({
 
               <Button
                 variant={
-                  saveStatus === "saved" && !hasUnsavedChanges
+                  (saveStatus === "saved" || saveStatus === "offline-saved") &&
+                  !hasUnsavedChanges
                     ? "back"
                     : "primary"
                 }
@@ -787,7 +853,9 @@ export default function RecommendationsModule({
               >
                 {saving
                   ? "Guardando recomendaciones..."
-                  : saveStatus === "saved" && !hasUnsavedChanges
+                  : (saveStatus === "saved" ||
+                        saveStatus === "offline-saved") &&
+                      !hasUnsavedChanges
                     ? "✓ Recomendaciones Guardadas (Guardar de nuevo)"
                     : "Guardar Mis Recomendaciones"}
               </Button>

@@ -1,13 +1,35 @@
 import { useState } from "react";
 import { QUESTIONS, ENVIRONMENTAL_HAZARDS } from "../constants/surveyData";
 
-export function useMorseSurvey() {
-  const [answers, setAnswers] = useState({});
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  // Inicializamos los peligros dinámicamente con los IDs del arreglo
-  const [hazards, setHazards] = useState(
-    ENVIRONMENTAL_HAZARDS.reduce((acc, h) => ({ ...acc, [h.id]: false }), {}),
+function createDefaultHazards() {
+  return ENVIRONMENTAL_HAZARDS.reduce((acc, h) => ({ ...acc, [h.id]: false }), {});
+}
+
+export function useMorseSurvey(initialDraft = null) {
+  const [answers, setAnswers] = useState(() =>
+    initialDraft?.answers && typeof initialDraft.answers === "object"
+      ? initialDraft.answers
+      : {},
   );
+  const [currentQuestion, setCurrentQuestion] = useState(() => {
+    const savedIndex = initialDraft?.currentQuestion;
+    if (
+      typeof savedIndex === "number" &&
+      savedIndex >= 0 &&
+      savedIndex < QUESTIONS.length
+    ) {
+      return savedIndex;
+    }
+    return 0;
+  });
+  // Inicializamos los peligros dinámicamente con los IDs del arreglo
+  const [hazards, setHazards] = useState(() => {
+    const defaults = createDefaultHazards();
+    if (initialDraft?.hazards && typeof initialDraft.hazards === "object") {
+      return { ...defaults, ...initialDraft.hazards };
+    }
+    return defaults;
+  });
 
   const morseScore = Object.keys(answers).reduce((total, key) => {
     return answers[key]
@@ -42,9 +64,7 @@ export function useMorseSurvey() {
 
   const reset = () => {
     setAnswers({});
-    setHazards(
-      ENVIRONMENTAL_HAZARDS.reduce((acc, h) => ({ ...acc, [h.id]: false }), {}),
-    );
+    setHazards(createDefaultHazards());
     setCurrentQuestion(0);
   };
 

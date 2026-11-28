@@ -16,7 +16,7 @@ function isValidRutFormat(rut) {
   return /^\d{7,8}-[0-9K]$/.test(rut);
 }
 
-export default function LoginModule({ onLoginSuccess }) {
+export default function LoginModule({ onLoginSuccess, pwaBanner = null }) {
   const isDesktop = useIsDesktop();
   const styles = getStyles(isDesktop);
 
@@ -212,6 +212,8 @@ export default function LoginModule({ onLoginSuccess }) {
         }}
       >
         <div style={{ width: "100%" }}>
+          {pwaBanner}
+
           {/* Identidad visual consistente */}
           <div
             style={{
